@@ -1,13 +1,23 @@
-import { NextResponse } from "next/server";
+import { signSessionId, setSessionCookie } from "@/lib/auth";
+import { successResponse } from "@/lib/http/response";
+import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { createAuthStack } from "@/modules/auth/createAuthStack";
 
-export async function POST(request: Request) {
+export const POST = withErrorHandler(async (request: Request) => {
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
+    password?: string;
   };
 
-  return NextResponse.json({
-    success: true,
-    message: "Login route scaffolded.",
-    user: body.username ?? null,
+  const { authService } = createAuthStack();
+  const result = await authService.login(body);
+  const signedSessionId = await signSessionId(result.sessionId);
+
+  const response = successResponse({
+    user: result.user,
   });
-}
+
+  setSessionCookie(response, signedSessionId);
+
+  return response;
+});

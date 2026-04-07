@@ -1,28 +1,35 @@
-import { NextResponse } from "next/server";
+import { successResponse } from "@/lib/http/response";
+import { requireCurrentActor } from "@/lib/http/request-context";
+import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { parseJsonBody, parseRouteParams } from "@/lib/validators/http";
+import { userIdParamsSchema, userUpdateSchema } from "@/lib/validators/users";
+import { createUserManagementStack } from "@/modules/users/createUserManagementStack";
 
-export async function GET(
-  _request: Request,
-  context: RouteContext<"/api/users/[id]">,
-) {
-  const { id } = await context.params;
+export const GET = withErrorHandler(
+  async (
+    request: Request,
+    context: RouteContext<"/api/users/[id]">,
+  ) => {
+    const actor = await requireCurrentActor(request);
+    const { id } = await parseRouteParams(context.params, userIdParamsSchema);
+    const { userManagementService } = createUserManagementStack();
+    const user = await userManagementService.getUserById(actor, id);
 
-  return NextResponse.json({
-    data: { id },
-    resource: "users",
-  });
-}
+    return successResponse(user);
+  },
+);
 
-export async function PATCH(
-  request: Request,
-  context: RouteContext<"/api/users/[id]">,
-) {
-  const { id } = await context.params;
-  const body = await request.json().catch(() => ({}));
+export const PATCH = withErrorHandler(
+  async (
+    request: Request,
+    context: RouteContext<"/api/users/[id]">,
+  ) => {
+    const actor = await requireCurrentActor(request);
+    const { id } = await parseRouteParams(context.params, userIdParamsSchema);
+    const input = await parseJsonBody(request, userUpdateSchema);
+    const { userManagementService } = createUserManagementStack();
+    const user = await userManagementService.updateUser(actor, id, input);
 
-  return NextResponse.json({
-    resource: "users",
-    action: "update",
-    id,
-    payload: body,
-  });
-}
+    return successResponse(user);
+  },
+);

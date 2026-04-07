@@ -1,28 +1,20 @@
-import { NextResponse } from "next/server";
+import { successResponse } from "@/lib/http/response";
+import { requireCurrentActor } from "@/lib/http/request-context";
+import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { borrowRequestIdParamsSchema } from "@/lib/validators/borrow-requests";
+import { parseRouteParams } from "@/lib/validators/http";
+import { createBorrowStack } from "@/modules/borrow/createBorrowStack";
 
-export async function GET(
-  _request: Request,
-  context: RouteContext<"/api/borrow-requests/[id]">,
-) {
-  const { id } = await context.params;
+export const GET = withErrorHandler(
+  async (
+    request: Request,
+    context: RouteContext<"/api/borrow-requests/[id]">,
+  ) => {
+    const actor = await requireCurrentActor(request);
+    const { id } = await parseRouteParams(context.params, borrowRequestIdParamsSchema);
+    const { borrowRequestService } = createBorrowStack();
+    const borrowRequest = await borrowRequestService.getBorrowRequestById(actor, id);
 
-  return NextResponse.json({
-    data: { id },
-    resource: "borrow-requests",
-  });
-}
-
-export async function PATCH(
-  request: Request,
-  context: RouteContext<"/api/borrow-requests/[id]">,
-) {
-  const { id } = await context.params;
-  const body = await request.json().catch(() => ({}));
-
-  return NextResponse.json({
-    resource: "borrow-requests",
-    action: "update",
-    id,
-    payload: body,
-  });
-}
+    return successResponse(borrowRequest);
+  },
+);

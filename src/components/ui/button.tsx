@@ -8,16 +8,17 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        default:
+          "bg-primary text-white hover:bg-primary/85 dark:bg-primary dark:text-zinc-950 dark:hover:bg-primary/90",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-border bg-background text-zinc-950 hover:bg-muted hover:text-zinc-950 aria-expanded:bg-muted aria-expanded:text-zinc-950 dark:border-input dark:bg-input/30 dark:text-zinc-50 dark:hover:bg-input/50 dark:hover:text-zinc-50",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-secondary text-zinc-950 hover:bg-secondary/80 hover:text-zinc-950 aria-expanded:bg-secondary aria-expanded:text-zinc-950 dark:bg-secondary dark:text-zinc-50 dark:hover:bg-secondary/80 dark:hover:text-zinc-50",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "text-zinc-950 hover:bg-muted hover:text-zinc-950 aria-expanded:bg-muted aria-expanded:text-zinc-950 dark:text-zinc-50 dark:hover:bg-muted/50 dark:hover:text-zinc-50",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-primary underline-offset-4 hover:underline dark:text-primary",
       },
       size: {
         default:

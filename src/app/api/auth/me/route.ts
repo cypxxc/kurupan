@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { successResponse } from "@/lib/http/response";
+import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { createAuthStack } from "@/modules/auth/createAuthStack";
 
-export async function GET() {
-  return NextResponse.json({
-    authenticated: false,
-    user: null,
+export const GET = withErrorHandler(async (request: Request) => {
+  const { authService } = createAuthStack();
+  const actor = await authService.getCurrentUser(request);
+
+  return successResponse({
+    user: actor,
   });
-}
+});

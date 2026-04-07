@@ -86,7 +86,7 @@ CREATE TABLE "return_transactions" (
 );
 --> statement-breakpoint
 CREATE TABLE "sessions" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"external_user_id" varchar(255) NOT NULL,
 	"effective_role" "role" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

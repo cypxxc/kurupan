@@ -1,0 +1,837 @@
+{
+  "id": "cbbcfad1-a9ed-488a-a1a1-4db4f029abc7",
+  "prevId": "ddd1e98c-c6ca-4b36-923a-7ee62c1d86f9",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.assets": {
+      "name": "assets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "assets_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "asset_code": {
+          "name": "asset_code",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_qty": {
+          "name": "total_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "available_qty": {
+          "name": "available_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "asset_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'available'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assets_asset_code_unique": {
+          "name": "assets_asset_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "asset_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assets_total_qty_non_negative": {
+          "name": "assets_total_qty_non_negative",
+          "value": "\"assets\".\"total_qty\" >= 0"
+        },
+        "assets_available_qty_non_negative": {
+          "name": "assets_available_qty_non_negative",
+          "value": "\"assets\".\"available_qty\" >= 0"
+        },
+        "assets_available_qty_lte_total_qty": {
+          "name": "assets_available_qty_lte_total_qty",
+          "value": "\"assets\".\"available_qty\" <= \"assets\".\"total_qty\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.audit_logs": {
+      "name": "audit_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "audit_logs_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "actor_external_user_id": {
+          "name": "actor_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "before_data": {
+          "name": "before_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_data": {
+          "name": "after_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.borrow_request_items": {
+      "name": "borrow_request_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "borrow_request_items_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "borrow_request_id": {
+          "name": "borrow_request_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_qty": {
+          "name": "requested_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_qty": {
+          "name": "approved_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "borrow_request_items_borrow_request_id_borrow_requests_id_fk": {
+          "name": "borrow_request_items_borrow_request_id_borrow_requests_id_fk",
+          "tableFrom": "borrow_request_items",
+          "tableTo": "borrow_requests",
+          "columnsFrom": [
+            "borrow_request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "borrow_request_items_asset_id_assets_id_fk": {
+          "name": "borrow_request_items_asset_id_assets_id_fk",
+          "tableFrom": "borrow_request_items",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "borrow_request_items_requested_qty_positive": {
+          "name": "borrow_request_items_requested_qty_positive",
+          "value": "\"borrow_request_items\".\"requested_qty\" > 0"
+        },
+        "borrow_request_items_approved_qty_positive": {
+          "name": "borrow_request_items_approved_qty_positive",
+          "value": "\"borrow_request_items\".\"approved_qty\" IS NULL OR \"borrow_request_items\".\"approved_qty\" > 0"
+        },
+        "borrow_request_items_approved_qty_lte_requested_qty": {
+          "name": "borrow_request_items_approved_qty_lte_requested_qty",
+          "value": "\"borrow_request_items\".\"approved_qty\" IS NULL OR \"borrow_request_items\".\"approved_qty\" <= \"borrow_request_items\".\"requested_qty\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.borrow_requests": {
+      "name": "borrow_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "borrow_requests_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "request_no": {
+          "name": "request_no",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "borrower_external_user_id": {
+          "name": "borrower_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "borrow_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "approved_by_external_user_id": {
+          "name": "approved_by_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejected_by_external_user_id": {
+          "name": "rejected_by_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejected_at": {
+          "name": "rejected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_by_external_user_id": {
+          "name": "cancelled_by_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "borrow_requests_request_no_unique": {
+          "name": "borrow_requests_request_no_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "request_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "borrow_requests_due_date_gte_start_date": {
+          "name": "borrow_requests_due_date_gte_start_date",
+          "value": "\"borrow_requests\".\"due_date\" >= \"borrow_requests\".\"start_date\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.return_transaction_items": {
+      "name": "return_transaction_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "return_transaction_items_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "return_transaction_id": {
+          "name": "return_transaction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "borrow_request_item_id": {
+          "name": "borrow_request_item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "return_qty": {
+          "name": "return_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "condition": {
+          "name": "condition",
+          "type": "return_condition",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "return_transaction_items_return_transaction_id_return_transactions_id_fk": {
+          "name": "return_transaction_items_return_transaction_id_return_transactions_id_fk",
+          "tableFrom": "return_transaction_items",
+          "tableTo": "return_transactions",
+          "columnsFrom": [
+            "return_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "return_transaction_items_borrow_request_item_id_borrow_request_items_id_fk": {
+          "name": "return_transaction_items_borrow_request_item_id_borrow_request_items_id_fk",
+          "tableFrom": "return_transaction_items",
+          "tableTo": "borrow_request_items",
+          "columnsFrom": [
+            "borrow_request_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "return_transaction_items_return_qty_positive": {
+          "name": "return_transaction_items_return_qty_positive",
+          "value": "\"return_transaction_items\".\"return_qty\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.return_transactions": {
+      "name": "return_transactions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "return_transactions_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "borrow_request_id": {
+          "name": "borrow_request_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_by_external_user_id": {
+          "name": "received_by_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "returned_at": {
+          "name": "returned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "return_transactions_borrow_request_id_borrow_requests_id_fk": {
+          "name": "return_transactions_borrow_request_id_borrow_requests_id_fk",
+          "tableFrom": "return_transactions",
+          "tableTo": "borrow_requests",
+          "columnsFrom": [
+            "borrow_request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "external_user_id": {
+          "name": "external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_role": {
+          "name": "effective_role",
+          "type": "role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "sessions_external_user_id_idx": {
+          "name": "sessions_external_user_id_idx",
+          "columns": [
+            {
+              "expression": "external_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sessions_expires_at_idx": {
+          "name": "sessions_expires_at_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_access": {
+      "name": "user_access",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "user_access_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "external_user_id": {
+          "name": "external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'borrower'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "granted_by_external_user_id": {
+          "name": "granted_by_external_user_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_access_external_user_id_idx": {
+          "name": "user_access_external_user_id_idx",
+          "columns": [
+            {
+              "expression": "external_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_access_external_user_id_unique": {
+          "name": "user_access_external_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "external_user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.asset_status": {
+      "name": "asset_status",
+      "schema": "public",
+      "values": [
+        "available",
+        "maintenance",
+        "retired"
+      ]
+    },
+    "public.borrow_request_status": {
+      "name": "borrow_request_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "approved",
+        "rejected",
+        "cancelled",
+        "partially_returned",
+        "returned"
+      ]
+    },
+    "public.return_condition": {
+      "name": "return_condition",
+      "schema": "public",
+      "values": [
+        "good",
+        "damaged",
+        "lost"
+      ]
+    },
+    "public.role": {
+      "name": "role",
+      "schema": "public",
+      "values": [
+        "borrower",
+        "staff",
+        "admin"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

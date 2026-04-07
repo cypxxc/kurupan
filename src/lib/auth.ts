@@ -1,8 +1,90 @@
-export type SessionUser = {
-  id: string;
-  role: "admin" | "staff" | "borrower";
-};
+import { SignJWT, jwtVerify } from "jose";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function getSessionUser(): Promise<SessionUser | null> {
-  return null;
+import type { ActorContext } from "@/types/auth";
+
+export type SessionUser = ActorContext;
+
+export const SESSION_COOKIE_NAME = "session";
+
+function getSessionSecret() {
+  const sessionSecret = process.env.SESSION_SECRET;
+
+  if (!sessionSecret) {
+    throw new Error("SESSION_SECRET is not set");
+  }
+
+  return new TextEncoder().encode(sessionSecret);
+}
+
+function getSessionTtlHours() {
+  return Number(process.env.SESSION_TTL_HOURS ?? "8");
+}
+
+function parseCookieHeader(cookieHeader: string) {
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce<Record<string, string>>((acc, part) => {
+      const separatorIndex = part.indexOf("=");
+
+      if (separatorIndex <= 0) {
+        return acc;
+      }
+
+      const name = decodeURIComponent(part.slice(0, separatorIndex).trim());
+      const value = decodeURIComponent(part.slice(separatorIndex + 1).trim());
+      acc[name] = value;
+      return acc;
+    }, {});
+}
+
+export async function signSessionId(sessionId: string) {
+  return new SignJWT({ sid: sessionId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${getSessionTtlHours()}h`)
+    .sign(getSessionSecret());
+}
+
+export async function verifySignedSessionId(cookieValue: string) {
+  const { payload } = await jwtVerify(cookieValue, getSessionSecret());
+  const sessionId = payload.sid;
+
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    throw new Error("Invalid session cookie");
+  }
+
+  return sessionId;
+}
+
+export function readSessionCookie(request: Request | NextRequest) {
+  const headerValue = request.headers.get("cookie");
+
+  if (!headerValue) {
+    return null;
+  }
+
+  return parseCookieHeader(headerValue)[SESSION_COOKIE_NAME] ?? null;
+}
+
+export function setSessionCookie(response: NextResponse, sessionId: string) {
+  response.cookies.set(SESSION_COOKIE_NAME, sessionId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.APP_ENV === "production",
+    path: "/",
+    maxAge: getSessionTtlHours() * 60 * 60,
+  });
+}
+
+export function clearSessionCookie(response: NextResponse) {
+  response.cookies.set(SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.APP_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
 }

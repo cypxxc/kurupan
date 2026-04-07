@@ -5,7 +5,7 @@ import { roleEnum } from "./users";
 export const sessions = pgTable(
   "sessions",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    id: uuid("id").primaryKey(),
     externalUserId: varchar("external_user_id", { length: 255 }).notNull(),
     effectiveRole: roleEnum("effective_role").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

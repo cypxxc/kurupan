@@ -1,3 +1,3 @@
-export { db, postgresClient } from "./postgres";
-export { legacyMysqlDb, legacyMysqlPool } from "./legacy-mysql/client";
+export { getDb, getPostgresClient } from "./postgres";
+export { getLegacyMysqlDb, getLegacyMysqlPool } from "./legacy-mysql/client";
 export * as schema from "./schema";
