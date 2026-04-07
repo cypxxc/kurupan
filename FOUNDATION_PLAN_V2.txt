@@ -1,0 +1,922 @@
+FOUNDATION PLAN V2
+
+Status
+- This file is aligned to the latest spec set from the V2 documents.
+- Scope is foundation implementation only: infrastructure, sessions/auth skeleton, OOP wiring, DB schema, API foundation.
+- This plan supersedes the previous draft of FOUNDATION_PLAN_V2.txt.
+
+Project Context
+- Project: ระบบยืม-คืนครุภัณฑ์
+- Stack:
+  - Next.js 16.2.2 App Router
+  - Route Handlers
+  - PostgreSQL
+  - Drizzle
+  - shadcn/ui + Tailwind
+  - Docker Compose
+- Current repo status:
+  - App Router scaffold exists
+  - Current routes/pages are placeholders only
+  - Build passes
+  - No real DB/auth/business logic yet
+
+Artifacts To Treat As Source Of Truth
+- Requirements V2
+- Domain Model Spec V2
+- Drizzle Schema Design V2
+- API Contract Spec V2
+- Database Architecture V1
+- OOP Architecture V1
+- Role & Permission Matrix V1
+- Integration Architecture V1
+- Env & Compose Spec V1
+- Error Handling Strategy V1
+- Validation Rules Spec V1
+- Testing Strategy V1
+- UI Component Guideline V1
+- Page Definition V1
+
+Locked Design Decisions
+- MySQL legacy DB is the source of truth for user identity
+- PostgreSQL is the source of truth for borrowing domain data
+- No cross-database foreign keys
+- default role = borrower
+- local roles = borrower, staff, admin
+- staff can manage assets
+- 1 borrow request can contain multiple asset items
+- first approved, first served
+- pending requests do not deduct stock
+- approve deducts stock
+- V1 approve model = all-or-nothing per request
+- partial return is supported
+- return stock logic:
+  - good -> available_qty += return_qty
+  - damaged -> available_qty += return_qty
+  - lost -> total_qty -= return_qty and available_qty does not increase
+- overdue is a derived state, not a stored enum status
+- serial_number is not part of assets V1
+- returned_qty is computed from return_transaction_items, not stored on borrow_request_items
+- request_no format = BR-{YYYY}-{0001..n}
+- POST /api/users uses upsert semantic
+- session model:
+  - server-side session record stored in PostgreSQL
+  - cookie stores signed session ID only
+  - TTL = 8 hours
+- OOP layering:
+  - Route Handler -> Service -> Repository / Policy
+- Route Handlers must not access DB directly
+- Important state changes must write audit logs
+
+Important Alignment Notes
+- Page routes in the latest Page Definition use:
+  - /dashboard
+  - /assets
+  - /assets/[id]
+  - /assets/new
+  - /assets/[id]/edit
+  - /borrow/new
+  - /requests
+  - /requests/[id]
+  - /requests/[id]/return
+  - /history
+  - /admin/users
+  - /admin/audit-logs
+- Existing repo scaffold still uses /borrow-requests and /users.
+- Foundation implementation should align API and domain now, while page route rename can be handled in the frontend phase if not done immediately.
+
+Phase 1: Infrastructure
+
+1.1 Install dependencies
+Run:
+  npm install drizzle-orm postgres mysql2 jose zod dotenv bcryptjs
+  npm install -D drizzle-kit vitest @vitest/coverage-v8 testcontainers msw
+
+Notes
+- postgres = PostgreSQL driver
+- mysql2 = MySQL driver for legacy DB integration
+- bcryptjs is the default password verification library unless legacy system uses a different hash algorithm
+- dotenv is required for Drizzle config and local runtime setup
+- test dependencies are added now because Testing Strategy V1 is part of the locked foundation
+
+1.2 Docker Compose
+Create docker-compose.yml
+
+Services
+- postgres
+  - image: postgres:16
+  - ports: 5432:5432
+  - env:
+    - POSTGRES_DB=borrowing
+    - POSTGRES_USER=app
+    - POSTGRES_PASSWORD=secret
+  - volume:
+    - pg_data:/var/lib/postgresql/data
+  - healthcheck:
+    - pg_isready -U app -d borrowing
+
+- legacy-mysql
+  - image: mysql:8.0
+  - ports: 3306:3306
+  - env:
+    - MYSQL_DATABASE=org_db
+    - MYSQL_ROOT_PASSWORD=rootsecret
+    - MYSQL_USER=readonly
+    - MYSQL_PASSWORD=secret
+  - volume:
+    - mysql_data:/var/lib/mysql
+  - healthcheck:
+    - mysqladmin ping -h localhost -u readonly -psecret
+  - optional for local integration testing
+
+- app
+  - build from project root Dockerfile or use node:20-slim for dev bootstrap
+  - ports: 3000:3000
+  - depends_on:
+    - postgres: service_healthy
+    - legacy-mysql: service_healthy
+  - env_file:
+    - .env.local
+  - command:
+    - npm run dev
+  - volumes:
+    - .:/app
+    - /app/node_modules
+
+Named volumes
+- pg_data
+- mysql_data
+
+1.3 Environment Files
+Create:
+- .env.example
+- .env.local
+
+.env.example
+  DATABASE_URL=postgresql://app:secret@localhost:5432/borrowing
+  LEGACY_MYSQL_URL=mysql://readonly:secret@localhost:3306/org_db
+  SESSION_SECRET=change-me-to-random-64-char-hex
+  APP_ENV=development
+  LOG_LEVEL=debug
+  SESSION_TTL_HOURS=8
+  NEXT_PUBLIC_APP_NAME=ระบบยืม-คืนครุภัณฑ์
+  MYSQL_CONNECT_TIMEOUT=5000
+  MYSQL_QUERY_TIMEOUT=10000
+
+.env.local
+  DATABASE_URL=postgresql://app:secret@localhost:5432/borrowing
+  LEGACY_MYSQL_URL=mysql://readonly:secret@localhost:3306/org_db
+  SESSION_SECRET=change-me-to-random-64-char-hex
+  APP_ENV=development
+  LOG_LEVEL=debug
+  SESSION_TTL_HOURS=8
+  NEXT_PUBLIC_APP_NAME=ระบบยืม-คืนครุภัณฑ์
+  MYSQL_CONNECT_TIMEOUT=5000
+  MYSQL_QUERY_TIMEOUT=10000
+
+1.4 Drizzle Config
+Create drizzle.config.ts
+
+Requirements
+- load env with dotenv
+- schema: ./src/db/schema/*.ts
+- out: ./src/db/migrations
+- dialect: postgresql
+- dbCredentials.url from DATABASE_URL
+
+Recommended shape
+  import "dotenv/config";
+  import { defineConfig } from "drizzle-kit";
+
+  export default defineConfig({
+    out: "./src/db/migrations",
+    schema: "./src/db/schema/*.ts",
+    dialect: "postgresql",
+    dbCredentials: {
+      url: process.env.DATABASE_URL!,
+    },
+  });
+
+1.5 Database Connections
+Create:
+- src/db/postgres.ts
+- src/db/legacy-mysql/client.ts
+- src/db/index.ts
+
+src/db/postgres.ts
+- use postgres driver + drizzle
+- export db
+
+Recommended shape
+  import postgres from "postgres";
+  import { drizzle } from "drizzle-orm/postgres-js";
+  import * as schema from "./schema";
+
+  const client = postgres(process.env.DATABASE_URL!);
+  export const db = drizzle(client, { schema });
+
+src/db/legacy-mysql/client.ts
+- use mysql2 connection pool
+- use drizzle mysql adapter
+- read-only workload only
+- connection timeout from env
+
+Important
+- auth/access modules are the only modules that may query legacy MySQL directly
+
+1.6 Schema Definitions
+Implement schema from Drizzle Schema Design V2
+
+Enums
+- roleEnum = borrower | staff | admin
+- assetStatusEnum = available | maintenance | retired
+- borrowRequestStatusEnum = pending | approved | rejected | cancelled | partially_returned | returned
+- returnConditionEnum = good | damaged | lost
+
+Tables
+
+src/db/schema/users.ts
+- userAccess
+  - id: integer identity primary key
+  - externalUserId: varchar, not null, unique
+  - role: role enum, not null, default borrower
+  - isActive: boolean, default true
+  - grantedByExternalUserId: varchar, nullable
+  - createdAt: timestamptz default now
+  - updatedAt: timestamptz default now
+
+src/db/schema/assets.ts
+- assets
+  - id: integer identity primary key
+  - assetCode: varchar(50), not null, unique
+  - name: varchar(255), not null
+  - category: text, nullable
+  - description: text, nullable
+  - location: text, nullable
+  - totalQty: integer, not null, check >= 0
+  - availableQty: integer, not null, check >= 0 and <= totalQty
+  - status: assetStatusEnum, not null, default available
+  - createdAt
+  - updatedAt
+
+Important
+- Do not add serialNumber
+
+src/db/schema/borrow-requests.ts
+- borrowRequests
+  - id: integer identity primary key
+  - requestNo: varchar, not null, unique
+  - borrowerExternalUserId: varchar, not null
+  - purpose: text
+  - startDate: date
+  - dueDate: date, check >= startDate
+  - status: borrowRequestStatusEnum, default pending
+  - approvedByExternalUserId: varchar, nullable
+  - approvedAt: timestamptz, nullable
+  - rejectedByExternalUserId: varchar, nullable
+  - rejectedAt: timestamptz, nullable
+  - rejectionReason: text, nullable
+  - cancelledByExternalUserId: varchar, nullable
+  - cancelledAt: timestamptz, nullable
+  - cancelReason: text, nullable
+  - createdAt
+  - updatedAt
+
+- borrowRequestItems
+  - id: integer identity primary key
+  - borrowRequestId: integer FK -> borrowRequests.id, on delete cascade
+  - assetId: integer FK -> assets.id, restrict / no action
+  - requestedQty: integer, check > 0
+  - approvedQty: integer, nullable, check null or > 0, check <= requestedQty
+  - createdAt
+  - updatedAt
+
+Important
+- Do not add returnedQty
+- returnedQty is computed in queries from return_transaction_items
+
+src/db/schema/returns.ts
+- returnTransactions
+  - id: integer identity primary key
+  - borrowRequestId: integer FK -> borrowRequests.id, restrict / no action
+  - receivedByExternalUserId: varchar, not null
+  - note: text, nullable
+  - returnedAt: timestamptz, not null
+  - createdAt
+
+- returnTransactionItems
+  - id: integer identity primary key
+  - returnTransactionId: integer FK -> returnTransactions.id, on delete cascade
+  - borrowRequestItemId: integer FK -> borrowRequestItems.id, restrict / no action
+  - returnQty: integer, check > 0
+  - condition: returnConditionEnum, not null
+  - note: text, nullable
+
+src/db/schema/sessions.ts
+- sessions
+  - id: uuid primary key
+  - externalUserId: varchar, not null
+  - effectiveRole: role enum, not null
+  - createdAt: timestamptz default now
+  - expiresAt: timestamptz, not null
+
+Indexes
+- index externalUserId
+- index expiresAt
+
+src/db/schema/audit-logs.ts
+- auditLogs
+  - id: integer identity primary key
+  - actorExternalUserId: varchar, nullable
+  - action: text, not null
+  - entityType: text, not null
+  - entityId: text, not null
+  - beforeData: jsonb, nullable
+  - afterData: jsonb, nullable
+  - createdAt
+
+Create src/db/schema/index.ts
+- export all schema objects
+
+1.7 Seed and Scripts
+Add scripts to package.json
+- db:generate
+- db:push
+- db:migrate
+- db:studio
+- db:seed
+- db:setup
+
+Recommended values
+  "db:generate": "drizzle-kit generate"
+  "db:push": "drizzle-kit push"
+  "db:migrate": "drizzle-kit migrate"
+  "db:studio": "drizzle-kit studio"
+  "db:seed": "tsx src/db/seed.ts"
+  "db:setup": "npm run db:migrate && npm run db:seed"
+
+Create:
+- src/db/seed.ts
+- docker/mysql-init/01-schema.sql
+- docker/mysql-init/02-seed.sql
+
+MySQL mock users
+- admin01
+- staff01
+- user01
+- inactive01
+
+PostgreSQL seed
+- user_access:
+  - admin01 -> admin
+  - staff01 -> staff
+  - user01 -> no local record, so borrower by default
+- sample assets
+
+Phase 2: Auth Foundation + OOP Infrastructure
+
+2.1 Error Classes
+Create src/lib/errors/
+- AppError
+- ValidationError
+- AuthenticationError
+- AuthorizationError
+- NotFoundError
+- ConflictError
+- InsufficientStockError
+- ReturnExceedsApprovedError
+- LegacyIdentityError
+- index.ts
+
+2.2 HTTP Response and Error Wrapper
+Create:
+- src/lib/http/response.ts
+- src/lib/http/withErrorHandler.ts
+
+Rules
+- use success/error response convention from API Contract
+- wrap every route handler with shared error mapper
+
+2.3 Logger
+Create:
+- src/lib/logger/index.ts
+
+Requirements
+- structured JSON logs
+- levels: debug, info, warn, error
+- do not log password, password_hash, full session cookie, or secrets
+
+2.4 Auth Utilities
+Rewrite src/lib/auth.ts
+
+Important correction from previous draft
+- Do not use JWT as source of truth for role
+- Session is server-side in PostgreSQL
+- Cookie stores signed session ID only
+
+Required utilities
+- signSessionId(sessionId)
+- verifySignedSessionId(cookieValue)
+- setSessionCookie(response, sessionId)
+- clearSessionCookie(response)
+- readSessionCookie(request)
+
+2.5 Base Types
+Create ActorContext type
+
+Recommended shape
+  type ActorContext = {
+    externalUserId: string;
+    role: "borrower" | "staff" | "admin";
+    fullName?: string;
+    email?: string | null;
+    employeeCode?: string | null;
+    department?: string | null;
+  };
+
+2.6 Auth and Access Modules
+Create:
+- src/modules/auth/services/AuthService.ts
+- src/modules/auth/repositories/LegacyUserRepository.ts
+- src/modules/auth/repositories/SessionRepository.ts
+- src/modules/auth/CurrentUserResolver.ts
+- src/modules/access/repositories/UserAccessRepository.ts
+- src/modules/access/services/AccessService.ts
+- src/modules/access/policies/AccessPolicy.ts
+
+LegacyUserRepository responsibilities
+- findByUsername(username)
+- findById(externalUserId)
+- searchUsers(query, pagination)
+- batchFindByIds(ids)
+
+AuthService responsibilities
+- login
+- logout
+- create session
+- current user context orchestration
+
+CurrentUserResolver responsibilities
+- read signed session ID from cookie
+- load session from PostgreSQL
+- validate expiry
+- load local access
+- optionally load legacy profile when needed
+- resolve effective actor
+
+Important session rule
+- effectiveRole stored in sessions
+- if local access changes after session creation, behavior must be explicit
+- for foundation V2, CurrentUserResolver should still re-check user_access when resolving current user
+- if local access is now inactive, deny access even if session exists
+- if role changed, prefer current local role over stale session role
+
+2.7 Auth Route Handlers
+Rewrite:
+- src/app/api/auth/login/route.ts
+- src/app/api/auth/me/route.ts
+- src/app/api/auth/logout/route.ts
+
+Login flow
+- parse username/password
+- LegacyUserRepository.findByUsername(username)
+- verify password with legacy algorithm
+- reject if legacy user inactive
+- resolve local role
+- create session record in PostgreSQL with TTL 8 hours
+- sign session ID into httpOnly cookie
+- return user object
+
+Me flow
+- resolve actor via CurrentUserResolver
+- return current user contract
+
+Logout flow
+- delete / invalidate session record
+- clear cookie
+
+2.8 Proxy
+Create src/proxy.ts
+
+Protected targets
+- /api/* except /api/auth/login
+- /dashboard/:path*
+- /assets/:path*
+- /borrow/:path*
+- /requests/:path*
+- /history/:path*
+- /admin/:path*
+
+Behavior
+- if missing/invalid session cookie:
+  - API -> 401 JSON
+  - page -> redirect /login
+
+Important
+- proxy handles authentication gate only
+- authorization stays in services / route handlers
+
+2.9 Permissions
+Rewrite src/lib/permissions.ts
+- hasRole()
+- requireRole()
+- shared permission helpers
+
+Phase 3: Validation + Domain Foundation
+
+3.1 Zod Validators
+Create:
+- src/lib/validators/auth.ts
+- src/lib/validators/assets.ts
+- src/lib/validators/borrow-requests.ts
+- src/lib/validators/returns.ts
+- src/lib/validators/access.ts
+
+Align with Validation Rules Spec V1
+
+Asset rules
+- assetCode: 1-50
+- name: 1-200
+- category: 1-100
+- description: 0-1000
+- location: 0-200
+- totalQty >= 0
+
+Borrow request rules
+- purpose: 1-500
+- startDate >= today
+- dueDate >= startDate
+- items length: 1-20
+- requestedQty: 1-999
+- duplicate assetId not allowed in one request
+
+Return rules
+- borrowRequestId > 0
+- returnQty: 1-999
+- condition in good/damaged/lost
+- recommend note when damaged/lost
+
+Access rules
+- externalUserId required
+- role enum
+
+3.2 Request Number Generator
+Create:
+- src/lib/utils/request-no.ts
+
+Rule
+- generate BR-{YYYY}-{0001..n}
+- sequence resets per year
+- generation happens inside transaction during request creation
+
+3.3 Audit Infrastructure
+Create:
+- src/modules/history/repositories/AuditLogRepository.ts
+- src/modules/history/services/HistoryService.ts
+
+Provide helper:
+- logAudit(actor, action, entityType, entityId, before?, after?)
+
+Phase 4: Core Domain Modules
+
+4.1 Assets Module
+Create:
+- src/modules/assets/repositories/AssetRepository.ts
+- src/modules/assets/policies/AssetPolicy.ts
+- src/modules/assets/services/AssetService.ts
+
+Rewrite API routes:
+- GET /api/assets
+- POST /api/assets
+- GET /api/assets/[id]
+- PATCH /api/assets/[id]
+
+Rules
+- borrower can read only
+- staff/admin can create/update
+- on create: availableQty = totalQty
+- on update: respect totalQty >= availableQty constraint
+
+4.2 Borrow Module
+Create:
+- src/modules/borrow/repositories/BorrowRequestRepository.ts
+- src/modules/borrow/repositories/BorrowRequestItemRepository.ts
+- src/modules/borrow/policies/BorrowRequestPolicy.ts
+- src/modules/borrow/domain/StockService.ts
+- src/modules/borrow/domain/RequestStatusResolver.ts
+- src/modules/borrow/services/BorrowRequestService.ts
+
+Rewrite API routes:
+- GET /api/borrow-requests
+- POST /api/borrow-requests
+- GET /api/borrow-requests/[id]
+- POST /api/borrow-requests/[id]/approve
+- POST /api/borrow-requests/[id]/reject
+- POST /api/borrow-requests/[id]/cancel
+
+Borrow creation
+- create request header + items
+- normalize duplicate assetId before persistence or reject by validation
+- advisory stock check only
+- no stock deduction on create
+
+Approve flow
+- all-or-nothing
+- transaction:
+  - load request and items
+  - lock asset rows FOR UPDATE
+  - verify every asset has enough availableQty
+  - if any fail -> throw InsufficientStockError with insufficientItems details
+  - deduct availableQty
+  - set request status approved
+  - set approvedQty = requestedQty for every item
+  - write audit log
+
+Reject flow
+- pending only
+- set rejected metadata and reason
+- audit
+
+Cancel flow
+- pending only
+- owner OR staff OR admin
+- cancelReason required
+- set cancelled metadata
+- audit
+
+Request detail/list rules
+- returnedQty in API response is computed from return_transaction_items
+- overdue flag is computed at query time when dueDate < current_date and status is approved or partially_returned
+- support overdue=true filter in list endpoint
+
+4.3 Returns Module
+Create:
+- src/modules/returns/repositories/ReturnRepository.ts
+- src/modules/returns/repositories/ReturnItemRepository.ts
+- src/modules/returns/policies/ReturnPolicy.ts
+- src/modules/returns/domain/ReturnCalculator.ts
+- src/modules/returns/services/ReturnService.ts
+
+Rewrite API routes:
+- POST /api/returns
+- GET /api/returns
+- GET /api/returns/[id]
+
+Return flow
+- only for approved or partially_returned requests
+- transaction:
+  - validate items belong to the request
+  - validate cumulative returned qty <= approvedQty
+  - insert return header + items
+  - stock update by condition:
+    - good -> available_qty += returnQty
+    - damaged -> available_qty += returnQty
+    - lost -> total_qty -= returnQty
+  - if lost causes available_qty > total_qty, adjust available_qty down
+  - recalculate request status
+  - audit
+
+Error rule
+- if cumulative return exceeds approved -> throw ReturnExceedsApprovedError
+
+4.4 Access Module
+Rewrite API routes:
+- GET /api/users
+- POST /api/users
+- GET /api/users/[id]
+- PATCH /api/users/[id]
+
+Rules
+- admin only
+- POST /api/users = upsert local access
+- reject if external user not found in legacy MySQL
+
+4.5 History and Dashboard
+Create routes:
+- src/app/api/history/route.ts
+- src/app/api/dashboard/route.ts
+- src/app/api/audit-logs/route.ts
+
+Rules
+- /api/history
+  - borrower sees own only
+  - staff/admin see all
+- /api/dashboard
+  - role-specific metrics and quick actions
+- /api/audit-logs
+  - staff/admin until changed by future decision
+
+Phase 5: Frontend Foundation Alignment
+
+5.1 Route Alignment
+Frontend page routes should align to Page Definition V1:
+- /login
+- /dashboard
+- /assets
+- /assets/[id]
+- /assets/new
+- /assets/[id]/edit
+- /borrow/new
+- /requests
+- /requests/[id]
+- /requests/[id]/return
+- /history
+- /admin/users
+- /admin/audit-logs
+
+Note
+- Existing placeholder routes in repo may need rename from:
+  - /borrow-requests -> /requests
+  - /users -> /admin/users
+  - /returns -> route may remain API-side but page flow should use /requests/[id]/return
+
+5.2 Shared UI Foundation
+Follow UI Component Guideline V1
+- tables
+- forms
+- cards
+- alert dialogs
+- status badges
+- skeleton loading
+- toast notifications
+- sidebar navigation by role
+
+Phase 6: Testing Foundation
+
+6.1 Testing Tools
+Use:
+- Vitest
+- @testing-library/react
+- Testcontainers
+- MSW
+
+6.2 Minimum Tests Before Feature Expansion
+Unit
+- AccessPolicy
+- BorrowRequestPolicy
+- ReturnPolicy
+- RequestStatusResolver
+- ReturnCalculator
+- validators
+
+Integration
+- BorrowRequestService.approveRequest
+- ReturnService.recordReturn
+- AccessService grant/upsert
+
+API integration
+- auth endpoints
+- asset CRUD permissions
+- borrow create/approve/cancel
+- return processing
+
+Critical concurrency tests
+- two concurrent approve requests for same stock
+- two concurrent returns for same item
+
+Files To Create
+
+Infrastructure
+- docker-compose.yml
+- .env.example
+- .env.local
+- drizzle.config.ts
+- docker/mysql-init/01-schema.sql
+- docker/mysql-init/02-seed.sql
+- src/db/postgres.ts
+- src/db/legacy-mysql/client.ts
+- src/db/seed.ts
+- src/db/schema/index.ts
+- src/db/schema/sessions.ts
+
+Shared foundation
+- src/proxy.ts
+- src/lib/errors/*.ts
+- src/lib/http/response.ts
+- src/lib/http/withErrorHandler.ts
+- src/lib/logger/index.ts
+- src/lib/utils/request-no.ts
+- src/lib/validators/*.ts
+
+Auth / access
+- src/modules/auth/services/AuthService.ts
+- src/modules/auth/repositories/LegacyUserRepository.ts
+- src/modules/auth/repositories/SessionRepository.ts
+- src/modules/auth/CurrentUserResolver.ts
+- src/modules/access/repositories/UserAccessRepository.ts
+- src/modules/access/services/AccessService.ts
+- src/modules/access/policies/AccessPolicy.ts
+
+Assets
+- src/modules/assets/repositories/AssetRepository.ts
+- src/modules/assets/services/AssetService.ts
+- src/modules/assets/policies/AssetPolicy.ts
+
+Borrow
+- src/modules/borrow/repositories/BorrowRequestRepository.ts
+- src/modules/borrow/repositories/BorrowRequestItemRepository.ts
+- src/modules/borrow/services/BorrowRequestService.ts
+- src/modules/borrow/policies/BorrowRequestPolicy.ts
+- src/modules/borrow/domain/StockService.ts
+- src/modules/borrow/domain/RequestStatusResolver.ts
+
+Returns
+- src/modules/returns/repositories/ReturnRepository.ts
+- src/modules/returns/repositories/ReturnItemRepository.ts
+- src/modules/returns/services/ReturnService.ts
+- src/modules/returns/policies/ReturnPolicy.ts
+- src/modules/returns/domain/ReturnCalculator.ts
+
+History
+- src/modules/history/repositories/AuditLogRepository.ts
+- src/modules/history/services/HistoryService.ts
+
+New API routes
+- src/app/api/history/route.ts
+- src/app/api/dashboard/route.ts
+- src/app/api/audit-logs/route.ts
+
+Files To Rewrite
+- src/db/index.ts
+- src/db/schema/users.ts
+- src/db/schema/assets.ts
+- src/db/schema/borrow-requests.ts
+- src/db/schema/returns.ts
+- src/db/schema/audit-logs.ts
+- src/lib/auth.ts
+- src/lib/permissions.ts
+- src/app/api/auth/login/route.ts
+- src/app/api/auth/me/route.ts
+- src/app/api/auth/logout/route.ts
+- src/app/api/assets/route.ts
+- src/app/api/assets/[id]/route.ts
+- src/app/api/borrow-requests/route.ts
+- src/app/api/borrow-requests/[id]/route.ts
+- src/app/api/borrow-requests/[id]/approve/route.ts
+- src/app/api/borrow-requests/[id]/reject/route.ts
+- src/app/api/borrow-requests/[id]/cancel/route.ts
+- src/app/api/returns/route.ts
+- src/app/api/returns/[id]/route.ts
+- src/app/api/users/route.ts
+- src/app/api/users/[id]/route.ts
+
+Verification Checklist
+
+Infrastructure
+- docker compose up -d
+- postgres and legacy-mysql become healthy
+- npm run db:generate
+- npm run db:migrate
+- npm run db:seed
+- npm run build
+
+Auth
+- POST /api/auth/login with mock or local legacy user returns session cookie
+- session record exists in PostgreSQL
+- GET /api/auth/me returns effective role
+- inactive local access denies use
+- POST /api/auth/logout invalidates session
+
+Assets
+- POST /api/assets with staff/admin session creates asset
+- availableQty = totalQty on creation
+- borrower cannot create/update asset
+
+Borrowing
+- POST /api/borrow-requests creates pending request with items
+- duplicate assetId in same request is rejected
+- stock unchanged after request creation
+- POST /api/borrow-requests/:id/approve deducts stock
+- conflicting approve returns INSUFFICIENT_STOCK with insufficientItems
+- POST /api/borrow-requests/:id/cancel works for owner, staff, admin when pending
+
+Returns
+- partial good return restores stock partially
+- damaged return restores availableQty
+- lost return reduces totalQty and does not restore availableQty
+- over-return returns RETURN_EXCEEDS_APPROVED
+- final return sets request status to returned
+
+Computed fields
+- returnedQty in request detail is computed correctly
+- overdue flag is computed correctly
+
+Access
+- POST /api/users upserts local access
+- external user missing in legacy MySQL returns NOT_FOUND
+
+Audit and dashboard
+- important mutations create audit logs
+- /api/dashboard returns role-specific metrics
+- /api/audit-logs returns data for staff/admin
+
+Done Criteria For Foundation
+- PostgreSQL and optional legacy-mysql mock run locally through docker compose
+- Drizzle schema is real and applied
+- Legacy MySQL adapter exists and supports direct query mode
+- Session model is DB-backed and cookie-based
+- Effective role resolution works with default borrower fallback
+- Protected routes are gated by proxy.ts
+- Core route handlers use Service -> Repository -> Policy layering
+- Validation, error handling, logging, and audit foundation are in place
+- Build succeeds
+- Test foundation is present and first critical tests are executable
