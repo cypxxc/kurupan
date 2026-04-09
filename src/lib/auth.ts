@@ -59,14 +59,18 @@ export async function verifySignedSessionId(cookieValue: string) {
   return sessionId;
 }
 
-export function readSessionCookie(request: Request | NextRequest) {
+export function readCookie(request: Request | NextRequest, cookieName: string) {
   const headerValue = request.headers.get("cookie");
 
   if (!headerValue) {
     return null;
   }
 
-  return parseCookieHeader(headerValue)[SESSION_COOKIE_NAME] ?? null;
+  return parseCookieHeader(headerValue)[cookieName] ?? null;
+}
+
+export function readSessionCookie(request: Request | NextRequest) {
+  return readCookie(request, SESSION_COOKIE_NAME);
 }
 
 export function setSessionCookie(response: NextResponse, sessionId: string) {

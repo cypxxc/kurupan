@@ -5,7 +5,7 @@ config({ path: ".env.local" });
 config();
 
 async function main() {
-  const [{ getDb, getPostgresClient }, { assets, localAuthUsers, userAccess }] = await Promise.all([
+  const [{ getDb, getPostgresClient }, { localAuthUsers, userAccess }] = await Promise.all([
     import("./postgres"),
     import("./schema"),
   ]);
@@ -45,7 +45,7 @@ async function main() {
         {
           externalUserId: "admin",
           username: "admin",
-          passwordHash: "$2b$10$Hl6RVC/ASkbVPPoyd8CQ9eNnfJz3DXGGFW9s4gl825RVYIsteLQqK",
+          passwordHash: "$2b$10$lVc/gNayOBeWawswpISUy.rul8PgYSvTBsMdHdDRMELxtzGsermsm",
           fullName: "System Administrator",
           email: "admin@local.test",
           employeeCode: "LOCAL-ADMIN-001",
@@ -63,74 +63,6 @@ async function main() {
           employeeCode: sql`excluded.employee_code`,
           department: sql`excluded.department`,
           isActive: sql`excluded.is_active`,
-          updatedAt: new Date(),
-        },
-      });
-
-    await db
-      .insert(assets)
-      .values([
-        {
-          assetCode: "NB-001",
-          name: "Notebook Dell Latitude",
-          category: "Notebook",
-          description: "Laptop for office work",
-          location: "IT Store",
-          totalQty: 10,
-          availableQty: 10,
-          status: "available",
-        },
-        {
-          assetCode: "PJ-001",
-          name: "Projector Epson",
-          category: "Projector",
-          description: "Meeting room projector",
-          location: "Meeting Room A",
-          totalQty: 4,
-          availableQty: 4,
-          status: "available",
-        },
-        {
-          assetCode: "CM-001",
-          name: "Camera Sony",
-          category: "Camera",
-          description: "Marketing content camera",
-          location: "Marketing",
-          totalQty: 3,
-          availableQty: 3,
-          status: "available",
-        },
-        {
-          assetCode: "MIC-001",
-          name: "Wireless Microphone Set",
-          category: "Audio",
-          description: "Event microphone set",
-          location: "General Affairs",
-          totalQty: 6,
-          availableQty: 6,
-          status: "available",
-        },
-        {
-          assetCode: "TAB-001",
-          name: "Tablet iPad",
-          category: "Tablet",
-          description: "Tablet for field activity",
-          location: "Training Room",
-          totalQty: 5,
-          availableQty: 5,
-          status: "maintenance",
-        },
-      ])
-      .onConflictDoUpdate({
-        target: assets.assetCode,
-        set: {
-          name: sql`excluded.name`,
-          category: sql`excluded.category`,
-          description: sql`excluded.description`,
-          location: sql`excluded.location`,
-          totalQty: sql`excluded.total_qty`,
-          availableQty: sql`excluded.available_qty`,
-          status: sql`excluded.status`,
           updatedAt: new Date(),
         },
       });

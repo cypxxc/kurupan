@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import {
@@ -11,6 +11,7 @@ import type {
   BorrowRequestCreateInput,
   BorrowRequestListQuery,
 } from "@/lib/validators/borrow-requests";
+import type { BorrowRequestStatus } from "@/modules/borrow/domain/BorrowRequestStateMachine";
 
 export type BorrowRequestItemView = {
   id: number;
@@ -70,6 +71,58 @@ export class BorrowRequestRepository {
     return result ?? null;
   }
 
+  async findManyByIds(ids: number[]): Promise<BorrowRequestDetail[]> {
+    const uniqueIds = Array.from(new Set(ids));
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const requests = await this.db
+      .select()
+      .from(borrowRequests)
+      .where(inArray(borrowRequests.id, uniqueIds))
+      .orderBy(desc(borrowRequests.createdAt), asc(borrowRequests.id));
+
+    return this.attachRelations(requests);
+  }
+
+  async findManyByDueDate(
+    dueDate: string,
+    statuses: BorrowRequestStatus[],
+  ): Promise<BorrowRequestDetail[]> {
+    const rows = await this.db
+      .select()
+      .from(borrowRequests)
+      .where(
+        and(
+          eq(borrowRequests.dueDate, dueDate),
+          inArray(borrowRequests.status, statuses),
+        ),
+      )
+      .orderBy(desc(borrowRequests.createdAt), asc(borrowRequests.id));
+
+    return this.attachRelations(rows);
+  }
+
+  async findManyOverdue(
+    beforeDate: string,
+    statuses: BorrowRequestStatus[],
+  ): Promise<BorrowRequestDetail[]> {
+    const rows = await this.db
+      .select()
+      .from(borrowRequests)
+      .where(
+        and(
+          lt(borrowRequests.dueDate, beforeDate),
+          inArray(borrowRequests.status, statuses),
+        ),
+      )
+      .orderBy(desc(borrowRequests.createdAt), asc(borrowRequests.id));
+
+    return this.attachRelations(rows);
+  }
+
   async create(
     input: Pick<BorrowRequestCreateInput, "purpose" | "startDate" | "dueDate"> & {
       borrowerExternalUserId: string;
@@ -122,24 +175,29 @@ export class BorrowRequestRepository {
   async updateItemApprovals(
     items: Array<{ borrowRequestItemId: number; approvedQty: number }>,
   ) {
-    const updatedItems = [];
-
-    for (const item of items) {
-      const [updated] = await this.db
-        .update(borrowRequestItems)
-        .set({
-          approvedQty: item.approvedQty,
-          updatedAt: new Date(),
-        })
-        .where(eq(borrowRequestItems.id, item.borrowRequestItemId))
-        .returning();
-
-      if (updated) {
-        updatedItems.push(updated);
-      }
+    if (items.length === 0) {
+      return [];
     }
 
-    return updatedItems;
+    const updatedAt = new Date();
+    const itemIds = items.map((item) => item.borrowRequestItemId);
+    const approvedQtySql = sql<number>`cast(case ${borrowRequestItems.id}
+      ${sql.join(
+        items.map(
+          (item) => sql`when ${item.borrowRequestItemId} then ${item.approvedQty}`,
+        ),
+        sql` `,
+      )}
+      end as integer)`;
+
+    return this.db
+      .update(borrowRequestItems)
+      .set({
+        approvedQty: approvedQtySql,
+        updatedAt,
+      })
+      .where(inArray(borrowRequestItems.id, itemIds))
+      .returning();
   }
 
   async markApproved(id: number, approvedByExternalUserId: string) {

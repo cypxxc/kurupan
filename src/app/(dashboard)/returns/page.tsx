@@ -83,7 +83,7 @@ export default function ReturnsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Returns</p>
+          <p className="text-sm font-medium text-muted-foreground">การคืน</p>
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{description}</p>
@@ -101,17 +101,17 @@ export default function ReturnsPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-3xl border bg-card px-5 py-4">
+        <div className="metric-tile">
           <p className="text-sm text-muted-foreground">ธุรกรรมคืนทั้งหมด</p>
           <p className="mt-2 text-3xl font-semibold">{returns.length}</p>
         </div>
-        <div className="rounded-3xl border bg-card px-5 py-4">
+        <div className="metric-tile">
           <p className="text-sm text-muted-foreground">คำขอที่มีการคืนแล้ว</p>
           <p className="mt-2 text-3xl font-semibold text-sky-600 dark:text-sky-400">
             {uniqueRequests}
           </p>
         </div>
-        <div className="rounded-3xl border bg-card px-5 py-4">
+        <div className="metric-tile">
           <p className="text-sm text-muted-foreground">จำนวนหน่วยที่คืนสะสม</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-600 dark:text-emerald-400">
             {totalReturnedQty}
@@ -119,7 +119,7 @@ export default function ReturnsPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border bg-card">
+      <div className="table-shell">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -172,7 +172,7 @@ export default function ReturnsPage() {
                         <div className="space-y-1">
                           <p className="font-medium">{transaction.borrowRequestNo}</p>
                           <p className="text-xs text-muted-foreground">
-                            Return #{transaction.id}
+                            รายการคืน #{transaction.id}
                           </p>
                         </div>
                       </TableCell>

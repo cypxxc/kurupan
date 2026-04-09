@@ -1,12 +1,21 @@
+import { getServerAuthProviderMode } from "@/lib/auth-provider";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { clearSessionCookie, readSessionCookie, verifySignedSessionId } from "@/lib/auth";
 import { errorResponse } from "@/lib/http/response";
 
 function createLoginRedirect(request: NextRequest) {
-  const loginUrl = new URL("/login", request.url);
   const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
 
+  if (getServerAuthProviderMode() === "oidc") {
+    const ssoUrl = new URL("/api/auth/sso/start", request.url);
+    ssoUrl.searchParams.set("next", nextPath);
+    const response = NextResponse.redirect(ssoUrl);
+    clearSessionCookie(response);
+    return response;
+  }
+
+  const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", nextPath);
 
   const response = NextResponse.redirect(loginUrl);
@@ -18,7 +27,7 @@ function createUnauthorizedApiResponse() {
   const response = errorResponse(
     {
       code: "UNAUTHENTICATED",
-      message: "Authentication required",
+        message: "กรุณาเข้าสู่ระบบ",
     },
     { status: 401 },
   );
@@ -30,7 +39,11 @@ function createUnauthorizedApiResponse() {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  if (pathname === "/api/auth/login") {
+  if (
+    pathname === "/api/auth/login" ||
+    pathname === "/api/auth/sso/start" ||
+    pathname === "/api/auth/sso/callback"
+  ) {
     return NextResponse.next();
   }
 

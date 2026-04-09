@@ -33,10 +33,10 @@ const ACTION_CONFIG: Record<
   }
 > = {
   approve: {
-    title: "อนุมัติคำขอ",
+    title: "Approve request",
     description:
-      "ระบบจะตัด stock ตามจำนวนที่อนุมัติทันที และคำขอนี้จะไม่กลับไปเป็นสถานะรออนุมัติอีก",
-    confirmLabel: "ยืนยันการอนุมัติ",
+      "This will reserve stock immediately and move the request out of the pending state.",
+    confirmLabel: "Confirm approval",
     confirmVariant: "default",
     icon: CheckCircle2,
     requireReason: false,
@@ -44,26 +44,26 @@ const ACTION_CONFIG: Record<
     reasonPlaceholder: "",
   },
   reject: {
-    title: "ปฏิเสธคำขอ",
+    title: "Reject request",
     description:
-      "กรุณาระบุเหตุผลให้ผู้ขอทราบ เพื่อใช้ประกอบการแก้ไขหรือส่งคำขอใหม่",
-    confirmLabel: "ยืนยันการปฏิเสธ",
+      "Add a reason so the requester understands what needs to be corrected before trying again.",
+    confirmLabel: "Confirm rejection",
     confirmVariant: "destructive",
     icon: XCircle,
     requireReason: true,
-    reasonLabel: "เหตุผลที่ปฏิเสธ",
-    reasonPlaceholder: "ระบุเหตุผลที่ปฏิเสธคำขอนี้",
+    reasonLabel: "Rejection reason",
+    reasonPlaceholder: "Explain why this request is being rejected",
   },
   cancel: {
-    title: "ยกเลิกคำขอ",
+    title: "Cancel request",
     description:
-      "ใช้สำหรับคำขอที่ยังอยู่ในสถานะรออนุมัติเท่านั้น และควรบันทึกสาเหตุไว้เพื่อให้ตรวจสอบย้อนหลังได้",
-    confirmLabel: "ยืนยันการยกเลิก",
+      "Use this only for requests that are still pending and record the reason for audit purposes.",
+    confirmLabel: "Confirm cancellation",
     confirmVariant: "destructive",
     icon: ShieldAlert,
     requireReason: true,
-    reasonLabel: "เหตุผลที่ยกเลิก",
-    reasonPlaceholder: "ระบุเหตุผลที่ยกเลิกคำขอนี้",
+    reasonLabel: "Cancellation reason",
+    reasonPlaceholder: "Explain why this request is being cancelled",
   },
 };
 
@@ -92,6 +92,7 @@ export function BorrowRequestActionDialog({
     if (!nextOpen) {
       setReason("");
     }
+
     onOpenChange(nextOpen);
   };
 
@@ -142,14 +143,14 @@ export function BorrowRequestActionDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={submitting}>ปิด</AlertDialogCancel>
+          <AlertDialogCancel disabled={submitting}>Close</AlertDialogCancel>
           <Button
             type="button"
             variant={config.confirmVariant}
             onClick={handleConfirm}
             disabled={submitting || reasonMissing}
           >
-            {submitting ? "กำลังดำเนินการ..." : config.confirmLabel}
+            {submitting ? "Processing..." : config.confirmLabel}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,33 +1,23 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
 import DashboardLayout from "@/components/layouts/dashboard-layout";
+import { AuthProvider } from "@/lib/auth-context";
+import { getCurrentActorFromServer } from "@/lib/server-auth";
 
-export default function DashboardGroupLayout({
+export default async function DashboardGroupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const actor = await getCurrentActorFromServer();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
-  }, [user, loading, router]);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground">กำลังโหลด...</p>
-      </div>
-    );
+  if (!actor) {
+    redirect("/login");
   }
 
-  if (!user) return null;
-
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <AuthProvider initialUser={actor} initialResolved>
+      <DashboardLayout>{children}</DashboardLayout>
+    </AuthProvider>
+  );
 }

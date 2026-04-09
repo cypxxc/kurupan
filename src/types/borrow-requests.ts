@@ -32,6 +32,15 @@ export type BorrowRequest = {
   items: BorrowRequestItemSummary[];
 };
 
+export const BORROW_REQUEST_STATUS_SORT_ORDER: Record<BorrowRequestStatus, number> = {
+  pending: 0,
+  approved: 1,
+  partially_returned: 2,
+  returned: 3,
+  rejected: 4,
+  cancelled: 5,
+};
+
 export type BorrowRequestDetail = BorrowRequest & {
   approvedByExternalUserId?: string | null;
   approvedAt?: string | null;
@@ -74,4 +83,24 @@ export function isBorrowRequestOverdue(
 
   const due = new Date(`${dueDate}T23:59:59`);
   return due.getTime() < now.getTime();
+}
+
+export function compareBorrowRequestsForDisplay(
+  a: Pick<BorrowRequest, "id" | "status" | "createdAt">,
+  b: Pick<BorrowRequest, "id" | "status" | "createdAt">,
+) {
+  const statusOrder =
+    BORROW_REQUEST_STATUS_SORT_ORDER[a.status] - BORROW_REQUEST_STATUS_SORT_ORDER[b.status];
+
+  if (statusOrder !== 0) {
+    return statusOrder;
+  }
+
+  const createdAtOrder = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
+  if (createdAtOrder !== 0) {
+    return createdAtOrder;
+  }
+
+  return b.id - a.id;
 }

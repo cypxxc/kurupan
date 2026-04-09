@@ -1,0 +1,212 @@
+import type { Dictionary } from "../types";
+
+export const en = {
+  common: {
+    actions: {
+      view: "View",
+      edit: "Edit",
+      borrow: "Borrow",
+      add: "Add",
+      manage: "Manage",
+      signOut: "Sign out",
+      continue: "Continue",
+      markAllRead: "Mark all read",
+      close: "Close",
+    },
+    pagination: {
+      previous: "Previous",
+      next: "Next",
+      summary: "Showing {start}-{end} of {total} items",
+    },
+    placeholders: {
+      uncategorized: "Uncategorized",
+      unspecifiedLocation: "No location",
+    },
+    languages: {
+      label: "Language",
+      th: "ไทย",
+      en: "English",
+    },
+    theme: {
+      switch: "Switch theme",
+      appearance: "Appearance",
+      light: "Light",
+      dark: "Dark",
+      system: "System",
+    },
+    statuses: {
+      asset: {
+        available: "Available",
+        maintenance: "Maintenance",
+        retired: "Retired",
+      },
+      borrow: {
+        pending: "Pending",
+        approved: "Approved",
+        rejected: "Rejected",
+        cancelled: "Cancelled",
+        partiallyReturned: "Partially returned",
+        returned: "Returned",
+      },
+      condition: {
+        good: "Good",
+        damaged: "Damaged",
+        lost: "Lost",
+      },
+      roles: {
+        admin: "Administrator",
+        staff: "Staff",
+        borrower: "Borrower",
+      },
+    },
+  },
+  shell: {
+    brand: "Kurupan",
+    workspaceTitle: "Asset Management",
+    workspaceDescription: "All navigation and workspace controls live here.",
+    navigation: "Navigation",
+    mobileMenu: "Menu",
+    skipToContent: "Skip to main content",
+    nav: {
+      dashboard: "Dashboard",
+      assets: "Assets",
+      borrowRequests: "Borrow Requests",
+      returns: "Returns",
+      history: "History",
+      users: "Users",
+    },
+  },
+  login: {
+    title: "Kurupan",
+    description: "Asset borrowing and return system",
+    loading: "Loading...",
+    username: "Username",
+    password: "Password",
+    signIn: "Sign in",
+    signingIn: "Signing in...",
+    loginFailed: "Login failed",
+    ssoDescription: "Sign in with your organization's single sign-on",
+    continueWithSso: "Continue with SSO",
+  },
+  notifications: {
+    triggerLabel: "Notifications",
+    triggerLabelWithUnread: "Notifications, {count} unread",
+    triggerLabelAllCaughtUp: "Notifications, all caught up",
+    title: "Notifications",
+    allCaughtUp: "All caught up",
+    unreadCount: "{count} unread",
+    emptyTitle: "No notifications yet",
+    emptyDescription: "New request updates and reminders will appear here.",
+    messages: {
+      borrowRequestCreated: {
+        title: "New borrow request",
+        body: "{borrowerName} submitted request {requestNo}.",
+      },
+      borrowRequestApproved: {
+        title: "Borrow request approved",
+        body: "Your request {requestNo} has been approved.",
+      },
+      borrowRequestRejected: {
+        title: "Borrow request rejected",
+        body: "Your request {requestNo} has been rejected.",
+      },
+      borrowRequestCancelled: {
+        title: "Borrow request cancelled",
+        body: "{borrowerName} cancelled request {requestNo}.",
+      },
+      returnRecorded: {
+        title: "Return recorded",
+        body: "A return was recorded for request {requestNo}.",
+      },
+      dueDateApproaching: {
+        title: "Due date is tomorrow",
+        body: "Request {requestNo} is due on {dueDate}.",
+      },
+      overdueBorrower: {
+        title: "Borrow request overdue",
+        body: "Request {requestNo} is overdue since {dueDate}.",
+      },
+      overdueStaff: {
+        title: "Overdue borrow request",
+        body: "{borrowerName}'s request {requestNo} is overdue since {dueDate}.",
+      },
+    },
+  },
+  errors: {
+    codes: {
+      unauthenticated: "Please sign in to continue.",
+      forbidden: "You do not have permission to perform this action.",
+      notFound: "The requested resource could not be found.",
+      validation: "The submitted data is invalid.",
+      conflict: "This request conflicts with the current data.",
+      insufficientStock: "Not enough stock is available for this action.",
+      returnExceedsApproved: "Returned quantity exceeds the approved quantity.",
+      internalServerError: "An unexpected error occurred.",
+    },
+    validation: {
+      requestBodyMustBeValidJson: "Request body must be valid JSON.",
+      requestBodyValidationFailed: "Request body validation failed.",
+      queryStringValidationFailed: "Query string validation failed.",
+      routeParameterValidationFailed: "Route parameter validation failed.",
+      multipartFieldPayloadInvalid: "Multipart field payload is invalid.",
+      multipartFieldPayloadMustBeValidJson: "Multipart field payload must be valid JSON.",
+      assetImagesMustBeJpgPngOrWebp: "Asset images must be JPG, PNG, or WebP.",
+      eachAssetImageMustBeFiveMbOrSmaller: "Each asset image must be 5 MB or smaller.",
+      assetNameMustNotExceedWords: "Asset name must not exceed {count} words.",
+      residualValueMustNotExceedPurchasePrice:
+        "Residual value must not exceed purchase price.",
+      atLeastOneFieldMustBeProvided: "At least one field must be provided.",
+      dateMustBeInYyyyMmDdFormat: "Date must be in YYYY-MM-DD format.",
+      invalidDate: "Invalid date.",
+      youCanUploadAtMostImagesPerAsset: "You can upload at most {count} images per asset.",
+    },
+    notifications: {
+      notFound: "Notification not found.",
+    },
+  },
+  assets: {
+    page: {
+      eyebrow: "Asset Management",
+      title: "Assets",
+      description: "Search, filter, and review the inventory catalog from one place.",
+      manageSeries: "Manage code series",
+      addAsset: "Add asset",
+      filters: "Filters",
+      searchPlaceholder: "Search by name or asset code",
+      metrics: {
+        visibleItems: "Visible items",
+        readyToBorrow: "Ready to borrow",
+        unavailable: "Unavailable or empty",
+      },
+      filterOptions: {
+        allStatuses: "All statuses",
+        allCategories: "All categories",
+        allLocations: "All locations",
+      },
+    },
+    table: {
+      headers: {
+        code: "Code",
+        name: "Asset name",
+        category: "Category",
+        location: "Location",
+        quantity: "Quantity",
+        status: "Status",
+        actions: "Actions",
+      },
+      quantityLabel: "Available / Total",
+      empty: {
+        searchTitle: "No results found",
+        searchDescription: "Try changing the search term or filters.",
+        defaultTitle: "No assets yet",
+        defaultDescription: "Add an asset to start managing borrowing and returns.",
+        addAsset: "Add asset",
+      },
+    },
+    status: {
+      available: "Available",
+      maintenance: "Maintenance",
+      retired: "Retired",
+    },
+  },
+} satisfies Dictionary;

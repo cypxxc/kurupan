@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Archive, Box, ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { toast } from "sonner";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Combobox } from "@/components/ui/combobox";
 import {
   Table,
   TableBody,
@@ -16,32 +15,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatAssetQuantity } from "@/lib/asset-standards";
 import { cn } from "@/lib/utils";
-import type { Asset, AssetStatus } from "@/types/assets";
+import type { Asset } from "@/types/assets";
 
 const PAGE_SIZE = 10;
-
-const STATUS_OPTIONS: Array<{ value: AssetStatus; label: string }> = [
-  { value: "available", label: "พร้อมใช้งาน" },
-  { value: "maintenance", label: "ซ่อมบำรุง" },
-  { value: "retired", label: "ปลดระวาง" },
-];
 
 export function AssetDataTable({
   assets,
   loading,
   canManage,
   searchTerm,
-  onAssetUpdated,
 }: {
   assets: Asset[];
   loading: boolean;
   canManage: boolean;
   searchTerm: string;
-  onAssetUpdated: (asset: Asset) => void;
 }) {
+  const { t } = useI18n();
   const [page, setPage] = useState(1);
-  const [updatingAssetId, setUpdatingAssetId] = useState<number | null>(null);
 
   const pageCount = Math.max(1, Math.ceil(assets.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -51,53 +43,26 @@ export function AssetDataTable({
     return assets.slice(start, start + PAGE_SIZE);
   }, [assets, currentPage]);
 
-  const updateStatus = async (asset: Asset, status: AssetStatus) => {
-    if (asset.status === status) {
-      return;
-    }
-
-    setUpdatingAssetId(asset.id);
-
-    try {
-      const response = await fetch(`/api/assets/${asset.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status }),
-      });
-      const result = (await response.json()) as
-        | { success: true; data: Asset }
-        | { success: false; error?: { message?: string } };
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "ไม่สามารถอัปเดตสถานะครุภัณฑ์ได้");
-        return;
-      }
-
-      onAssetUpdated(result.data);
-      toast.success("อัปเดตสถานะครุภัณฑ์แล้ว");
-    } catch {
-      toast.error("เกิดข้อผิดพลาดระหว่างอัปเดตสถานะครุภัณฑ์");
-    } finally {
-      setUpdatingAssetId(null);
-    }
-  };
-
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-3xl border bg-card">
+      <div className="table-shell">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>รหัส</TableHead>
-                <TableHead>ชื่อครุภัณฑ์</TableHead>
-                <TableHead className="hidden lg:table-cell">หมวดหมู่</TableHead>
-                <TableHead className="hidden xl:table-cell">สถานที่</TableHead>
-                <TableHead>คงเหลือ</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead className="text-right">การดำเนินการ</TableHead>
+                <TableHead>{t("assets.table.headers.code")}</TableHead>
+                <TableHead>{t("assets.table.headers.name")}</TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  {t("assets.table.headers.category")}
+                </TableHead>
+                <TableHead className="hidden xl:table-cell">
+                  {t("assets.table.headers.location")}
+                </TableHead>
+                <TableHead>{t("assets.table.headers.quantity")}</TableHead>
+                <TableHead>{t("assets.table.headers.status")}</TableHead>
+                <TableHead className="text-right">
+                  {t("assets.table.headers.actions")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,24 +102,26 @@ export function AssetDataTable({
     const searching = searchTerm.trim().length > 0;
 
     return (
-      <div className="rounded-3xl border bg-card px-6 py-14 text-center">
+      <div className="empty-state">
         <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
           {searching ? <Search className="size-6" /> : <Archive className="size-6" />}
         </div>
         <h2 className="mt-4 text-lg font-semibold">
-          {searching ? "ไม่พบผลลัพธ์" : "ยังไม่มีครุภัณฑ์"}
+          {searching
+            ? t("assets.table.empty.searchTitle")
+            : t("assets.table.empty.defaultTitle")}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {searching
-            ? "ลองเปลี่ยนคำค้นหาหรือตัวกรอง"
-            : "เพิ่มข้อมูลครุภัณฑ์เพื่อเริ่มจัดการรายการยืม-คืน"}
+            ? t("assets.table.empty.searchDescription")
+            : t("assets.table.empty.defaultDescription")}
         </p>
         {canManage && !searching ? (
           <Link
             href="/assets/new"
             className={cn(buttonVariants({ variant: "default" }), "mt-5")}
           >
-            เพิ่มครุภัณฑ์
+            {t("assets.table.empty.addAsset")}
           </Link>
         ) : null}
       </div>
@@ -165,24 +132,29 @@ export function AssetDataTable({
   const endItem = Math.min(currentPage * PAGE_SIZE, assets.length);
 
   return (
-    <div className="overflow-hidden rounded-3xl border bg-card">
+    <div className="table-shell">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>รหัส</TableHead>
-              <TableHead>ชื่อครุภัณฑ์</TableHead>
-              <TableHead className="hidden lg:table-cell">หมวดหมู่</TableHead>
-              <TableHead className="hidden xl:table-cell">สถานที่</TableHead>
-              <TableHead>คงเหลือ</TableHead>
-              <TableHead>สถานะ</TableHead>
-              <TableHead className="text-right">การดำเนินการ</TableHead>
+              <TableHead>{t("assets.table.headers.code")}</TableHead>
+              <TableHead>{t("assets.table.headers.name")}</TableHead>
+              <TableHead className="hidden lg:table-cell">
+                {t("assets.table.headers.category")}
+              </TableHead>
+              <TableHead className="hidden xl:table-cell">
+                {t("assets.table.headers.location")}
+              </TableHead>
+              <TableHead>{t("assets.table.headers.quantity")}</TableHead>
+              <TableHead>{t("assets.table.headers.status")}</TableHead>
+              <TableHead className="text-right">
+                {t("assets.table.headers.actions")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visibleAssets.map((asset) => {
               const borrowable = asset.status === "available" && asset.availableQty > 0;
-              const updating = updatingAssetId === asset.id;
 
               return (
                 <TableRow key={asset.id}>
@@ -190,20 +162,36 @@ export function AssetDataTable({
                     {asset.assetCode}
                   </TableCell>
                   <TableCell>
-                    <div className="flex min-w-56 items-start gap-3">
-                      <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                        <Box className="size-4" />
-                      </div>
-                      <div className="space-y-1">
+                    <div className="flex min-w-56 items-center gap-3">
+                      {asset.primaryImageUrl ? (
+                        <div className="size-11 shrink-0 overflow-hidden rounded-sm border border-border/80 bg-muted/30">
+                          <img
+                            src={asset.primaryImageUrl}
+                            alt={asset.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border/80 bg-muted/55 text-muted-foreground">
+                          <Box className="size-4" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
                         <Link
                           href={`/assets/${asset.id}`}
-                          className="font-medium transition-colors hover:text-primary"
+                          title={asset.name}
+                          className="asset-title-clamp block max-w-[18rem] text-sm leading-5 font-medium transition-colors hover:text-primary sm:max-w-[24rem] xl:max-w-[32rem]"
                         >
                           {asset.name}
                         </Link>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
-                          <span>{asset.category ?? "ไม่ระบุหมวดหมู่"}</span>
-                          <span>{asset.location ?? "ไม่ระบุสถานที่"}</span>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
+                          <span>
+                            {asset.category ?? t("common.placeholders.uncategorized")}
+                          </span>
+                          <span>
+                            {asset.location ??
+                              t("common.placeholders.unspecifiedLocation")}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -215,33 +203,30 @@ export function AssetDataTable({
                     {asset.location ?? "-"}
                   </TableCell>
                   <TableCell>
-                    <div className="min-w-20">
+                    <div className="min-w-24">
                       <p
                         className={cn(
-                          "font-medium",
+                          "font-medium tabular-nums",
                           asset.availableQty === 0 && "text-destructive",
                         )}
                       >
-                        {asset.availableQty}
+                        {formatAssetQuantity(asset.availableQty)}
                         <span className="ml-1 text-sm font-normal text-muted-foreground">
-                          / {asset.totalQty}
+                          / {formatAssetQuantity(asset.totalQty)}
                         </span>
                       </p>
-                      <p className="text-xs text-muted-foreground">พร้อมใช้ / ทั้งหมด</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t("assets.table.quantityLabel")}
+                      </p>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="space-y-2">
-                      <StatusBadge type="asset" value={asset.status} />
-                      {canManage ? (
-                        <Combobox
-                          value={asset.status}
-                          onChange={(value) => void updateStatus(asset, (value || asset.status) as AssetStatus)}
-                          disabled={updating}
-                          options={STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                          className="w-[150px]"
-                        />
-                      ) : null}
+                  <TableCell className="w-[170px]">
+                    <div className="flex min-h-10 items-center">
+                      <StatusBadge
+                        type="asset"
+                        value={asset.status}
+                        className="w-fit max-w-full"
+                      />
                     </div>
                   </TableCell>
                   <TableCell>
@@ -250,14 +235,14 @@ export function AssetDataTable({
                         href={`/assets/${asset.id}`}
                         className={buttonVariants({ variant: "ghost", size: "sm" })}
                       >
-                        ดู
+                        {t("common.actions.view")}
                       </Link>
                       {canManage ? (
                         <Link
                           href={`/assets/${asset.id}/edit`}
                           className={buttonVariants({ variant: "outline", size: "sm" })}
                         >
-                          แก้ไข
+                          {t("common.actions.edit")}
                         </Link>
                       ) : null}
                       {borrowable ? (
@@ -265,7 +250,7 @@ export function AssetDataTable({
                           href={`/borrow-requests/new?assetId=${asset.id}`}
                           className={buttonVariants({ variant: "outline", size: "sm" })}
                         >
-                          ยืม
+                          {t("common.actions.borrow")}
                         </Link>
                       ) : null}
                     </div>
@@ -278,34 +263,32 @@ export function AssetDataTable({
       </div>
       <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground">
-          แสดง {startItem}-{endItem} จาก {assets.length} รายการ
+          {t("common.pagination.summary", {
+            start: startItem,
+            end: endItem,
+            total: assets.length,
+          })}
         </p>
         <div className="flex items-center gap-2 self-end">
           <button
             type="button"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "gap-1",
-            )}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={currentPage === 1}
           >
             <ChevronLeft className="size-3.5" />
-            ก่อนหน้า
+            {t("common.pagination.previous")}
           </button>
           <span className="min-w-16 text-center text-muted-foreground">
             {currentPage} / {pageCount}
           </span>
           <button
             type="button"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "gap-1",
-            )}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
             onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
             disabled={currentPage === pageCount}
           >
-            ถัดไป
+            {t("common.pagination.next")}
             <ChevronRight className="size-3.5" />
           </button>
         </div>

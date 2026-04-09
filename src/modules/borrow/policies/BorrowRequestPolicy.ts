@@ -9,11 +9,11 @@ export class BorrowRequestPolicy {
 
   assertCanView(actor: ActorContext, borrowerExternalUserId: string) {
     if (actor.role === "borrower" && actor.externalUserId !== borrowerExternalUserId) {
-      throw new AuthorizationError("You can only view your own borrow requests");
+      throw new AuthorizationError("คุณสามารถดูได้เฉพาะคำขอยืมของตนเอง");
     }
   }
 
   assertCanApprove(actor: ActorContext) {
-    requireRole(actor, ["staff", "admin"], "Only staff or admin can approve borrow requests");
+    requireRole(actor, ["staff", "admin"], "เฉพาะเจ้าหน้าที่หรือผู้ดูแลระบบเท่านั้นที่อนุมัติคำขอยืมได้");
   }
 }

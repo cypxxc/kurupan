@@ -28,7 +28,7 @@ export class AuditLogService {
 
   async listAuditLogs(actor: ActorContext, filters: AuditLogListQuery): Promise<AuditLogEntry[]> {
     if (actor.role === "borrower") {
-      throw new AuthorizationError("You do not have permission to view audit logs");
+      throw new AuthorizationError("คุณไม่มีสิทธิ์ดูบันทึกตรวจสอบ");
     }
 
     const rows = await this.auditLogRepository.findMany(filters);

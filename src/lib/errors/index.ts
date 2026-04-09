@@ -3,7 +3,6 @@ export * from "./AuthenticationError";
 export * from "./AuthorizationError";
 export * from "./ConflictError";
 export * from "./InsufficientStockError";
-export * from "./LegacyIdentityError";
 export * from "./NotFoundError";
 export * from "./ReturnExceedsApprovedError";
 export * from "./ValidationError";

@@ -1,6 +1,6 @@
 # Kurupan — ระบบยืม-คืนครุภัณฑ์
 
-ระบบจัดการการยืม-คืนครุภัณฑ์ภายในองค์กร สร้างด้วย Next.js 16 App Router, PostgreSQL และเชื่อมต่อกับระบบผู้ใช้ MySQL เดิมขององค์กร
+ระบบจัดการการยืม-คืนครุภัณฑ์ภายในองค์กร สร้างด้วย Next.js App Router, PostgreSQL และ Drizzle ORM
 
 ---
 
@@ -10,11 +10,11 @@
 |---|---|
 | Frontend | Next.js 16.2.2 (App Router), React 19, Tailwind CSS v4 |
 | UI Components | shadcn/ui, base-ui/react, lucide-react |
-| Database (หลัก) | PostgreSQL 16 (Drizzle ORM) |
-| Database (ผู้ใช้) | MySQL 8 (legacy — read-only, ดึงข้อมูลผู้ใช้องค์กร) |
+| Database | PostgreSQL 16 (Drizzle ORM) |
 | Auth | JWT (jose) + bcryptjs, session เก็บใน cookie |
 | Validation | Zod |
 | Runtime | Node.js 20 |
+| Testing | Vitest + MSW |
 
 ---
 
@@ -54,17 +54,20 @@ cp .env.example .env.local
 
 ```env
 DATABASE_URL=postgresql://app:secret@localhost:5432/borrowing
-LEGACY_MYSQL_URL=mysql://readonly:secret@localhost:3306/org_db
-JWT_SECRET=your-secret-key-here
+SESSION_SECRET=change-me-to-random-64-char-hex
+APP_ENV=development
+LOG_LEVEL=debug
+SESSION_TTL_HOURS=8
+NEXT_PUBLIC_APP_NAME=Kurupan Borrowing System
 ```
 
 ### 2. เริ่ม Database
 
 ```bash
-docker compose up postgres legacy-mysql -d
+docker compose up postgres -d
 ```
 
-รอจนทั้งสอง service พร้อม (healthy):
+รอจน postgres พร้อม (healthy):
 
 ```bash
 docker compose ps
@@ -116,6 +119,7 @@ npm run dev
 | `npm run db:setup` | migrate + seed ในคำสั่งเดียว |
 | `npm run db:studio` | เปิด Drizzle Studio (GUI ดูข้อมูล) |
 | `npm run lint` | ตรวจ ESLint |
+| `npm test` | รัน unit tests ด้วย Vitest |
 
 ---
 
@@ -159,10 +163,10 @@ src/
 ## Database Schema
 
 - **assets** — รายการครุภัณฑ์ (code, name, category, location, qty, status)
+- **asset_code_series** — เทมเพลตการสร้างรหัสครุภัณฑ์อัตโนมัติ (prefix, separator, pad length)
 - **borrow_requests** — คำขอยืม (ผู้ยืม, วันที่, สถานะ, items)
 - **returns** — บันทึกการคืน (items, condition, วันที่)
-- **local_auth_users** — ผู้ใช้ที่มีสิทธิ์ในระบบนี้ (อ้างอิง externalUserId จาก MySQL)
+- **local_auth_users** — ผู้ใช้ในระบบ
 - **sessions** — session token
 - **audit_logs** — บันทึก action ทุกอย่างในระบบ
-
-Legacy MySQL (`org_db`) ใช้เพื่อ **ค้นหาและยืนยันตัวตนผู้ใช้องค์กรเท่านั้น** — ไม่มีการเขียนข้อมูลกลับ
+- **notifications** — การแจ้งเตือน (ครบกำหนด, เกินกำหนดคืน)

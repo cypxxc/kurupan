@@ -13,6 +13,10 @@ export type SessionRecord = {
   id: string;
   externalUserId: string;
   effectiveRole: Role;
+  fullName: string | null;
+  email: string | null;
+  employeeCode: string | null;
+  department: string | null;
   createdAt: Date;
   expiresAt: Date;
 };

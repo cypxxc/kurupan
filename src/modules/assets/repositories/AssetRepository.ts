@@ -1,7 +1,8 @@
-import { and, asc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import {
+  assetImages,
   assets,
   borrowRequestItems,
   borrowRequests,
@@ -40,12 +41,10 @@ export class AssetRepository {
     }
 
     const query = this.db.select().from(assets).orderBy(asc(assets.assetCode));
+    const records =
+      conditions.length > 0 ? await query.where(and(...conditions)) : await query;
 
-    if (conditions.length > 0) {
-      return query.where(and(...conditions));
-    }
-
-    return query;
+    return this.attachPrimaryImageUrls(records);
   }
 
   async findById(id: number) {
@@ -55,7 +54,11 @@ export class AssetRepository {
       .where(eq(assets.id, id))
       .limit(1);
 
-    return record ?? null;
+    if (!record) {
+      return null;
+    }
+
+    return this.attachPrimaryImageUrl(record);
   }
 
   async findByIds(ids: number[]) {
@@ -63,7 +66,9 @@ export class AssetRepository {
       return [];
     }
 
-    return this.db.select().from(assets).where(inArray(assets.id, ids));
+    const records = await this.db.select().from(assets).where(inArray(assets.id, ids));
+
+    return this.attachPrimaryImageUrls(records);
   }
 
   async findByAssetCode(assetCode: string) {
@@ -73,7 +78,29 @@ export class AssetRepository {
       .where(eq(assets.assetCode, assetCode))
       .limit(1);
 
-    return record ?? null;
+    if (!record) {
+      return null;
+    }
+
+    return this.attachPrimaryImageUrl(record);
+  }
+
+  async countBySeriesId(seriesId: number) {
+    const [record] = await this.db
+      .select({ count: count() })
+      .from(assets)
+      .where(eq(assets.assetCodeSeriesId, seriesId));
+
+    return record?.count ?? 0;
+  }
+
+  async countBorrowRequestItemsByAssetId(assetId: number) {
+    const [record] = await this.db
+      .select({ count: count() })
+      .from(borrowRequestItems)
+      .where(eq(borrowRequestItems.assetId, assetId));
+
+    return record?.count ?? 0;
   }
 
   async create(
@@ -93,10 +120,20 @@ export class AssetRepository {
         totalQty: input.totalQty,
         availableQty: input.availableQty,
         status: input.status,
+        assetCodeSeriesId: input.assetCodeSeriesId,
+        purchasePrice:
+          input.purchasePrice === null ? null : String(input.purchasePrice),
+        purchaseDate: input.purchaseDate,
+        usefulLifeYears: input.usefulLifeYears,
+        residualValue:
+          input.residualValue === null ? null : String(input.residualValue),
       })
       .returning();
 
-    return record;
+    return {
+      ...record,
+      primaryImageUrl: null,
+    };
   }
 
   async updateById(id: number, input: AssetUpdateInput) {
@@ -104,12 +141,44 @@ export class AssetRepository {
       .update(assets)
       .set({
         ...input,
+        purchasePrice:
+          input.purchasePrice === undefined
+            ? undefined
+            : input.purchasePrice === null
+              ? null
+              : String(input.purchasePrice),
+        residualValue:
+          input.residualValue === undefined
+            ? undefined
+            : input.residualValue === null
+              ? null
+              : String(input.residualValue),
         updatedAt: new Date(),
       })
       .where(eq(assets.id, id))
       .returning();
 
-    return record ?? null;
+    if (!record) {
+      return null;
+    }
+
+    return this.attachPrimaryImageUrl(record);
+  }
+
+  async deleteById(id: number) {
+    const [record] = await this.db
+      .delete(assets)
+      .where(eq(assets.id, id))
+      .returning();
+
+    if (!record) {
+      return null;
+    }
+
+    return {
+      ...record,
+      primaryImageUrl: null,
+    };
   }
 
   async decrementAvailableQtyIfEnough(assetId: number, qty: number) {
@@ -234,5 +303,53 @@ export class AssetRepository {
     return [...borrowActivity, ...returnActivity].sort((left, right) =>
       right.occurredAt.localeCompare(left.occurredAt),
     );
+  }
+
+  private async attachPrimaryImageUrls<T extends { id: number }>(records: T[]) {
+    if (records.length === 0) {
+      return records.map((record) => ({
+        ...record,
+        primaryImageUrl: null,
+      }));
+    }
+
+    const imageRows = await this.db
+      .select({
+        assetId: assetImages.assetId,
+        url: assetImages.url,
+        sortOrder: assetImages.sortOrder,
+      })
+      .from(assetImages)
+      .where(inArray(assetImages.assetId, records.map((record) => record.id)))
+      .orderBy(asc(assetImages.assetId), asc(assetImages.sortOrder), asc(assetImages.id));
+
+    const primaryImageByAssetId = new Map<number, string>();
+
+    for (const image of imageRows) {
+      if (!primaryImageByAssetId.has(image.assetId)) {
+        primaryImageByAssetId.set(image.assetId, image.url);
+      }
+    }
+
+    return records.map((record) => ({
+      ...record,
+      primaryImageUrl: primaryImageByAssetId.get(record.id) ?? null,
+    }));
+  }
+
+  private async attachPrimaryImageUrl<T extends { id: number }>(record: T) {
+    const [image] = await this.db
+      .select({
+        url: assetImages.url,
+      })
+      .from(assetImages)
+      .where(eq(assetImages.assetId, record.id))
+      .orderBy(asc(assetImages.sortOrder), asc(assetImages.id))
+      .limit(1);
+
+    return {
+      ...record,
+      primaryImageUrl: image?.url ?? null,
+    };
   }
 }

@@ -21,10 +21,6 @@ export const userListQuerySchema = z.object({
   search: z.string().trim().max(255).optional().default(""),
 });
 
-export const legacyUserSearchQuerySchema = z.object({
-  query: z.string().trim().min(2).max(255),
-});
-
 export const userCreateSchema = z.object({
   externalUserId: z.string().trim().min(1).max(255).optional(),
   username: z.string().trim().min(1).max(50),
@@ -54,4 +50,3 @@ export const userUpdateSchema = z
 export type UserListQuery = z.infer<typeof userListQuerySchema>;
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
-export type LegacyUserSearchQuery = z.infer<typeof legacyUserSearchQuerySchema>;

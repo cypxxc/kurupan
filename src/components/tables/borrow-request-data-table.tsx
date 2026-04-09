@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 
 import { OverdueBadge } from "@/components/shared/overdue-badge";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
+  compareBorrowRequestsForDisplay,
   isBorrowRequestOverdue,
   type BorrowRequest,
 } from "@/types/borrow-requests";
@@ -33,23 +34,39 @@ export function BorrowRequestDataTable({
   requests,
   loading,
   isBorrower,
+  page,
+  returnTo,
+  onPageChange,
 }: {
   requests: BorrowRequest[];
   loading: boolean;
   isBorrower: boolean;
+  page: number;
+  returnTo: string;
+  onPageChange: (page: number) => void;
 }) {
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(requests.length / PAGE_SIZE));
+  const orderedRequests = useMemo(
+    () => [...requests].sort(compareBorrowRequestsForDisplay),
+    [requests],
+  );
+  const pageCount = Math.max(1, Math.ceil(orderedRequests.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
 
   const visibleRequests = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
-    return requests.slice(start, start + PAGE_SIZE);
-  }, [currentPage, requests]);
+    return orderedRequests.slice(start, start + PAGE_SIZE);
+  }, [currentPage, orderedRequests]);
+
+  const handleDetailNavigate = () => {
+    window.sessionStorage.setItem(
+      `borrow-requests:scroll:${returnTo}`,
+      String(window.scrollY),
+    );
+  };
 
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-3xl border bg-card">
+      <div className="table-shell">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -102,9 +119,9 @@ export function BorrowRequestDataTable({
     );
   }
 
-  if (requests.length === 0) {
+  if (orderedRequests.length === 0) {
     return (
-      <div className="rounded-3xl border bg-card px-6 py-14 text-center">
+      <div className="empty-state">
         <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
           <ClipboardList className="size-6" />
         </div>
@@ -117,10 +134,10 @@ export function BorrowRequestDataTable({
   }
 
   const startItem = (currentPage - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(currentPage * PAGE_SIZE, requests.length);
+  const endItem = Math.min(currentPage * PAGE_SIZE, orderedRequests.length);
 
   return (
-    <div className="overflow-hidden rounded-3xl border bg-card">
+    <div className="table-shell">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -173,8 +190,9 @@ export function BorrowRequestDataTable({
                   <TableCell>
                     <div className="flex justify-end">
                       <Link
-                        href={`/borrow-requests/${request.id}`}
+                        href={`/borrow-requests/${request.id}?returnTo=${encodeURIComponent(returnTo)}`}
                         className={buttonVariants({ variant: "ghost", size: "sm" })}
+                        onClick={handleDetailNavigate}
                       >
                         ดูรายละเอียด
                       </Link>
@@ -188,7 +206,7 @@ export function BorrowRequestDataTable({
       </div>
       <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground">
-          แสดง {startItem}-{endItem} จาก {requests.length} รายการ
+          แสดง {startItem}-{endItem} จาก {orderedRequests.length} รายการ
         </p>
         <div className="flex items-center gap-2 self-end">
           <button
@@ -197,7 +215,7 @@ export function BorrowRequestDataTable({
               buttonVariants({ variant: "outline", size: "sm" }),
               "gap-1",
             )}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
           >
             <ChevronLeft className="size-3.5" />
@@ -212,7 +230,7 @@ export function BorrowRequestDataTable({
               buttonVariants({ variant: "outline", size: "sm" }),
               "gap-1",
             )}
-            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            onClick={() => onPageChange(Math.min(pageCount, currentPage + 1))}
             disabled={currentPage === pageCount}
           >
             ถัดไป

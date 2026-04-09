@@ -1,7 +1,30 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx shadcn@latest init -d)"
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add badge dialog alert-dialog input label select textarea table card dropdown-menu separator sheet avatar sonner)",
+      "Bash(ls -la /d/kurupanv1/src/app/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(npx next:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(docker compose:*)",
+      "Bash(npx tsx:*)",
+      "Bash(docker exec:*)",
+      "Bash(npx shadcn@latest add combobox)",
+      "Bash(npx shadcn@latest add popover command)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(taskkill /PID 26352 /F)",
+      "Bash(cmd /c \"netstat -ano | findstr :3000\")",
+      "Bash(cmd /c \"netstat -ano | findstr LISTEN\")",
+      "Bash(cmd /c \"netstat -an\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -State Listen | Select-Object LocalPort | Sort-Object LocalPort\")",
+      "Bash(\"D:\\\\kurupanv1\\\\README.md\":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(npm run:*)",
+      "Bash(claude mcp:*)"
     ]
   }
 }

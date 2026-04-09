@@ -1,6 +1,10 @@
 import { AppError } from "@/lib/errors";
 import { errorResponse } from "@/lib/http/response";
+import { defaultLocale } from "@/lib/i18n/config";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { logger } from "@/lib/logger";
+
+import { localizeErrorDetails, localizeErrorMessage } from "./error-localization";
 
 export function withErrorHandler<TArgs extends unknown[]>(
   handler: (...args: TArgs) => Promise<Response> | Response,
@@ -9,6 +13,8 @@ export function withErrorHandler<TArgs extends unknown[]>(
     try {
       return await handler(...args);
     } catch (error) {
+      const locale = await getRequestLocale().catch(() => defaultLocale);
+
       if (error instanceof AppError) {
         logger.warn("Handled request error", {
           code: error.code,
@@ -20,8 +26,8 @@ export function withErrorHandler<TArgs extends unknown[]>(
         return errorResponse(
           {
             code: error.code,
-            message: error.message,
-            details: error.details,
+            message: localizeErrorMessage(error, locale),
+            details: localizeErrorDetails(error.details, locale),
           },
           { status: error.statusCode },
         );
@@ -32,7 +38,13 @@ export function withErrorHandler<TArgs extends unknown[]>(
       return errorResponse(
         {
           code: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred",
+          message: localizeErrorMessage(
+            {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "An unexpected error occurred",
+            },
+            locale,
+          ),
         },
         { status: 500 },
       );

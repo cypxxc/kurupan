@@ -11,7 +11,7 @@ export function hasRole(
 export function requireRole(
   actor: ActorContext | null | undefined,
   roles: Role[],
-  message = "You do not have permission to perform this action",
+  message = "คุณไม่มีสิทธิ์ดำเนินการนี้",
 ) {
   if (!hasRole(actor, roles)) {
     const actualRole = actor === null || actor === undefined ? null : (actor as ActorContext).role;

@@ -1,9 +1,15 @@
+import { getServerAuthProviderMode } from "@/lib/auth-provider";
 import { signSessionId, setSessionCookie } from "@/lib/auth";
+import { ValidationError } from "@/lib/errors";
 import { successResponse } from "@/lib/http/response";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
 import { createAuthStack } from "@/modules/auth/createAuthStack";
 
 export const POST = withErrorHandler(async (request: Request) => {
+  if (getServerAuthProviderMode() === "oidc") {
+    throw new ValidationError("Use /api/auth/sso/start when AUTH_PROVIDER=oidc");
+  }
+
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
     password?: string;

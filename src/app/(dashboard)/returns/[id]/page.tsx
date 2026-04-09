@@ -34,7 +34,7 @@ function DetailField({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl bg-muted/60 px-4 py-3">
+    <div className="rounded-sm border border-border/80 bg-muted/50 px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 font-medium">{value}</p>
     </div>
@@ -86,14 +86,14 @@ export default function ReturnDetailPage() {
     return (
       <div className="space-y-6">
         <div className="h-8 w-40 animate-pulse rounded bg-muted" />
-        <div className="h-[420px] animate-pulse rounded-3xl border bg-muted/60" />
+        <div className="h-[420px] animate-pulse rounded-sm border border-border bg-muted/55" />
       </div>
     );
   }
 
   if (!transaction) {
     return (
-      <div className="rounded-3xl border bg-card px-6 py-14 text-center">
+      <div className="empty-state">
         <h1 className="text-xl font-semibold">ไม่พบรายการคืน</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           ตรวจสอบรายการที่ต้องการเปิดดูอีกครั้ง
@@ -118,10 +118,10 @@ export default function ReturnDetailPage() {
         กลับไปหน้ารายการคืน
       </Link>
 
-      <section className="rounded-3xl border bg-card px-6 py-6 shadow-sm">
+      <section className="surface-panel surface-section">
         <div className="space-y-3">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Return #{transaction.id}
+            รายการคืน #{transaction.id}
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">รายละเอียดการคืน</h1>
           <p className="text-sm text-muted-foreground">
@@ -148,7 +148,7 @@ export default function ReturnDetailPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-3xl border bg-card shadow-sm">
+      <section className="table-shell">
         <div className="border-b px-6 py-5">
           <h2 className="text-lg font-semibold">รายการที่คืน</h2>
           <p className="mt-1 text-sm text-muted-foreground">

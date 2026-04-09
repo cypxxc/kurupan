@@ -66,6 +66,9 @@ export class LocalAuthUserRepository {
             ilike(localAuthUsers.username, `%${filters.search}%`),
             ilike(localAuthUsers.fullName, `%${filters.search}%`),
             ilike(localAuthUsers.externalUserId, `%${filters.search}%`),
+            ilike(localAuthUsers.email, `%${filters.search}%`),
+            ilike(localAuthUsers.employeeCode, `%${filters.search}%`),
+            ilike(localAuthUsers.department, `%${filters.search}%`),
           ),
         )
       : await query;

@@ -8,13 +8,13 @@ export const BORROW_REQUEST_STATUS_TABS: Array<{
   value: "all" | BorrowRequestStatus;
   label: string;
 }> = [
-  { value: "all", label: "ทั้งหมด" },
-  { value: "pending", label: "รออนุมัติ" },
-  { value: "approved", label: "อนุมัติแล้ว" },
-  { value: "rejected", label: "ปฏิเสธ" },
-  { value: "cancelled", label: "ยกเลิก" },
-  { value: "partially_returned", label: "คืนบางส่วนแล้ว" },
-  { value: "returned", label: "คืนครบแล้ว" },
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "partially_returned", label: "Partially returned" },
+  { value: "returned", label: "Returned" },
 ];
 
 export function BorrowRequestStatusTabs({
@@ -37,8 +37,8 @@ export function BorrowRequestStatusTabs({
             size="sm"
             className={cn(
               active
-                ? "bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
-                : "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-transparent dark:text-zinc-100 dark:hover:bg-zinc-800",
+                ? "shadow-[0_12px_24px_-14px_rgba(176,104,27,0.55)]"
+                : "border-border/80 bg-background/75 text-foreground/75 hover:bg-accent/65 hover:text-foreground dark:bg-transparent dark:text-zinc-100 dark:hover:bg-zinc-800",
             )}
             onClick={() => onValueChange(tab.value)}
           >

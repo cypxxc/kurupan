@@ -11,7 +11,7 @@ export async function requireCurrentActor(
   const actor = await currentUserResolver.resolveFromRequest(request);
 
   if (!actor) {
-    throw new AuthenticationError("Authentication required");
+    throw new AuthenticationError("กรุณาเข้าสู่ระบบ");
   }
 
   return actor;

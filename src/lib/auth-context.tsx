@@ -2,12 +2,15 @@
 
 import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
   type ReactNode,
 } from "react";
+
+import { getClientAuthProviderMode, type AuthProviderMode } from "@/lib/auth-provider";
 
 export type UserRole = "admin" | "staff" | "borrower";
 
@@ -23,21 +26,36 @@ export type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null;
   loading: boolean;
+  authProvider: AuthProviderMode;
   login: (username: string, password: string) => Promise<void>;
+  startSsoLogin: (nextPath?: string) => void;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({
+  children,
+  initialUser = null,
+  initialResolved = false,
+}: {
+  children: ReactNode;
+  initialUser?: AuthUser | null;
+  initialResolved?: boolean;
+}) {
+  const [user, setUser] = useState<AuthUser | null>(initialUser);
+  const [loading, setLoading] = useState(!initialResolved);
+  const authProvider = getClientAuthProviderMode();
+  const didResolveInitialState = useRef(initialResolved);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/auth/me");
-      const data = await res.json();
+      const response = await fetch("/api/auth/me");
+      const data = await response.json();
+
       if (data.success && data.data?.user) {
         setUser(data.data.user);
       } else {
@@ -46,26 +64,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setUser(null);
     } finally {
+      didResolveInitialState.current = true;
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh();
+    if (didResolveInitialState.current) {
+      return;
+    }
+
+    didResolveInitialState.current = true;
+    void refresh();
   }, [refresh]);
 
   const login = async (username: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    if (authProvider === "oidc") {
+      throw new Error("Password login is disabled.");
+    }
+
+    const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+    const data = await response.json();
+
     if (!data.success) {
-      throw new Error(data.error?.message ?? "Login failed");
+      throw new Error(data.error?.message ?? "Login failed.");
     }
+
     setUser(data.data.user);
   };
+
+  const startSsoLogin = useCallback((nextPath = "/dashboard") => {
+    const params = new URLSearchParams({ next: nextPath });
+    window.location.assign(`/api/auth/sso/start?${params.toString()}`);
+  }, []);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -73,16 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider
+      value={{ user, loading, authProvider, login, startSsoLogin, logout, refresh }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
   }
-  return ctx;
+
+  return context;
 }

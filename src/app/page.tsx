@@ -1,22 +1,8 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
+import { getCurrentActorFromServer } from "@/lib/server-auth";
 
-export default function HomePage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading) {
-      router.replace(user ? "/dashboard" : "/login");
-    }
-  }, [user, loading, router]);
-
-  return (
-    <div className="flex h-screen items-center justify-center">
-      <p className="text-muted-foreground">กำลังโหลด...</p>
-    </div>
-  );
+export default async function HomePage() {
+  const actor = await getCurrentActorFromServer();
+  redirect(actor ? "/dashboard" : "/login");
 }

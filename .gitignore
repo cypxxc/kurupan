@@ -99,3 +99,10 @@ coverage/
 
 # TernJS port file
 .tern-port
+
+# MCP config (contains credentials)
+.mcp.json
+.claude/mcp.json
+
+# User uploads
+/public/uploads/

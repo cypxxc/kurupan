@@ -80,6 +80,22 @@ export class ReturnRepository {
     return detail ?? null;
   }
 
+  async findManyByIds(ids: number[]): Promise<ReturnTransactionDetail[]> {
+    const uniqueIds = Array.from(new Set(ids));
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .select()
+      .from(returnTransactions)
+      .where(inArray(returnTransactions.id, uniqueIds))
+      .orderBy(desc(returnTransactions.returnedAt), desc(returnTransactions.id));
+
+    return this.attachRelations(rows);
+  }
+
   async create(input: {
     borrowRequestId: number;
     receivedByExternalUserId: string;
@@ -156,7 +172,7 @@ export class ReturnRepository {
     const ids = rows.map((row) => row.id);
     const borrowRequestIds = Array.from(new Set(rows.map((row) => row.borrowRequestId)));
 
-    const [items, requests, borrowers] = await Promise.all([
+    const [items, requests] = await Promise.all([
       this.db
         .select({
           id: returnTransactionItems.id,
@@ -184,13 +200,26 @@ export class ReturnRepository {
         })
         .from(borrowRequests)
         .where(inArray(borrowRequests.id, borrowRequestIds)),
-      this.db
-        .select({
-          externalUserId: localAuthUsers.externalUserId,
-          fullName: localAuthUsers.fullName,
-        })
-        .from(localAuthUsers),
     ]);
+
+    const requestMapSeed = new Map(requests.map((request) => [request.id, request]));
+    const borrowerIds = Array.from(
+      new Set(
+        requests
+          .map((request) => request.borrowerExternalUserId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const borrowers =
+      borrowerIds.length === 0
+        ? []
+        : await this.db
+            .select({
+              externalUserId: localAuthUsers.externalUserId,
+              fullName: localAuthUsers.fullName,
+            })
+            .from(localAuthUsers)
+            .where(inArray(localAuthUsers.externalUserId, borrowerIds));
 
     const itemsByReturnId = new Map<number, ReturnTransactionItemView[]>();
 
@@ -209,7 +238,7 @@ export class ReturnRepository {
       itemsByReturnId.set(item.returnTransactionId, list);
     }
 
-    const requestMap = new Map(requests.map((request) => [request.id, request]));
+    const requestMap = requestMapSeed;
     const borrowerMap = new Map(
       borrowers.map((borrower) => [borrower.externalUserId, borrower.fullName]),
     );

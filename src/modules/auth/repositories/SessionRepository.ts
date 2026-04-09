@@ -10,6 +10,10 @@ export class SessionRepository {
   async create(params: {
     externalUserId: string;
     effectiveRole: Role;
+    fullName?: string | null;
+    email?: string | null;
+    employeeCode?: string | null;
+    department?: string | null;
     expiresAt: Date;
   }): Promise<SessionRecord> {
     const [session] = await getDb()
@@ -18,6 +22,10 @@ export class SessionRepository {
         id: randomUUID(),
         externalUserId: params.externalUserId,
         effectiveRole: params.effectiveRole,
+        fullName: params.fullName ?? null,
+        email: params.email ?? null,
+        employeeCode: params.employeeCode ?? null,
+        department: params.department ?? null,
         expiresAt: params.expiresAt,
       })
       .returning();

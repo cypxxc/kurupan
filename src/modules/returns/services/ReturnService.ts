@@ -1,23 +1,26 @@
-import { withTransaction } from "@/db/postgres";
-import {
-  ConflictError,
-  NotFoundError,
-  ReturnExceedsApprovedError,
-  ValidationError,
-} from "@/lib/errors";
+import { withTransactionContext } from "@/db/postgres";
+import { NotFoundError } from "@/lib/errors";
 import type {
   ReturnCreateInput,
   ReturnListQuery,
   ReturnUpdateInput,
 } from "@/lib/validators/returns";
 import type { ActorContext } from "@/types/auth";
-import { AuditLogRepository } from "@/modules/audit/repositories/AuditLogRepository";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
 import { AssetRepository } from "@/modules/assets/repositories/AssetRepository";
+import { BorrowRequestStateMachine } from "@/modules/borrow/domain/BorrowRequestStateMachine";
 import { BorrowRequestRepository } from "@/modules/borrow/repositories/BorrowRequestRepository";
+import { logger } from "@/lib/logger";
+import { NotificationService } from "@/modules/notifications/services/NotificationService";
 
 import { ReturnPolicy } from "../policies/ReturnPolicy";
 import { ReturnRepository } from "../repositories/ReturnRepository";
+import {
+  buildBorrowRequestItemMap,
+  isBorrowRequestFullyReturned,
+  requireReturnableBorrowRequest,
+  validateReturnItems,
+} from "./return-service.helpers";
 
 export class ReturnService {
   constructor(
@@ -26,6 +29,7 @@ export class ReturnService {
     private readonly assetRepository: AssetRepository,
     private readonly returnPolicy: ReturnPolicy,
     private readonly auditLogService: AuditLogService,
+    private readonly notificationService?: NotificationService,
   ) {}
 
   async listReturns(actor: ActorContext, filters: ReturnListQuery) {
@@ -46,7 +50,7 @@ export class ReturnService {
     const record = await this.returnRepository.findById(id);
 
     if (!record) {
-      throw new NotFoundError("Return transaction not found", { returnTransactionId: id });
+      throw new NotFoundError("ไม่พบรายการคืน", { returnTransactionId: id });
     }
 
     this.returnPolicy.assertCanView(actor, record.borrowerExternalUserId);
@@ -57,69 +61,26 @@ export class ReturnService {
   async createReturn(actor: ActorContext, input: ReturnCreateInput) {
     this.returnPolicy.assertCanManageReturns(actor);
 
-    const request = await this.borrowRequestRepository.findById(input.borrowRequestId);
-
-    if (!request) {
-      throw new NotFoundError("Borrow request not found", {
-        borrowRequestId: input.borrowRequestId,
-      });
-    }
-
-    if (!["approved", "partially_returned"].includes(request.status)) {
-      throw new ConflictError("Only approved requests can receive returns", {
-        borrowRequestId: request.id,
-        status: request.status,
-      });
-    }
-
-    const requestItemsById = new Map(request.items.map((item) => [item.id, item]));
+    const request = requireReturnableBorrowRequest(
+      await this.borrowRequestRepository.findById(input.borrowRequestId),
+      input.borrowRequestId,
+    );
+    const requestItemsById = buildBorrowRequestItemMap(request);
     const returnedQtyMap = await this.returnRepository.sumReturnedByBorrowRequestItemIds(
       request.items.map((item) => item.id),
     );
 
-    for (const item of input.items) {
-      const requestItem = requestItemsById.get(item.borrowRequestItemId);
+    validateReturnItems(input, request, requestItemsById, returnedQtyMap);
 
-      if (!requestItem) {
-        throw new ValidationError("Return item does not belong to the selected request", {
-          borrowRequestId: input.borrowRequestId,
-          borrowRequestItemId: item.borrowRequestItemId,
-        });
-      }
-
-      const approvedQty = requestItem.approvedQty ?? 0;
-      const returnedQty = returnedQtyMap.get(item.borrowRequestItemId) ?? 0;
-
-      if (approvedQty <= 0) {
-        throw new ConflictError("Cannot return an item that was not approved", {
-          borrowRequestItemId: item.borrowRequestItemId,
-        });
-      }
-
-      if (returnedQty + item.returnQty > approvedQty) {
-        throw new ReturnExceedsApprovedError(undefined, {
-          borrowRequestItemId: item.borrowRequestItemId,
-          approvedQty,
-          alreadyReturnedQty: returnedQty,
-          requestedReturnQty: item.returnQty,
-        });
-      }
-    }
-
-    return withTransaction(async (tx) => {
-      const returnRepository = new ReturnRepository(tx);
-      const borrowRequestRepository = new BorrowRequestRepository(tx);
-      const assetRepository = new AssetRepository(tx);
-      const auditLogService = new AuditLogService(new AuditLogRepository(tx));
-
-      const transaction = await returnRepository.create({
+    const detail = await withTransactionContext(async (ctx) => {
+      const transaction = await ctx.returnRepo.create({
         borrowRequestId: input.borrowRequestId,
         receivedByExternalUserId: actor.externalUserId,
         note: input.note,
         returnedAt: input.returnedAt ? new Date(input.returnedAt) : new Date(),
       });
 
-      await returnRepository.insertItems(transaction.id, input.items);
+      await ctx.returnRepo.insertItems(transaction.id, input.items);
 
       for (const item of input.items) {
         const requestItem = requestItemsById.get(item.borrowRequestItemId);
@@ -130,39 +91,36 @@ export class ReturnService {
 
         const asset =
           item.condition === "lost"
-            ? await assetRepository.decrementTotalQty(requestItem.assetId, item.returnQty)
-            : await assetRepository.incrementAvailableQty(requestItem.assetId, item.returnQty);
+            ? await ctx.assetRepo.decrementTotalQty(requestItem.assetId, item.returnQty)
+            : await ctx.assetRepo.incrementAvailableQty(requestItem.assetId, item.returnQty);
 
         if (!asset) {
-          throw new NotFoundError("Asset not found while recording return", {
+          throw new NotFoundError("ไม่พบครุภัณฑ์ระหว่างบันทึกการคืน", {
             assetId: requestItem.assetId,
           });
         }
       }
 
-      const newReturnedMap = await returnRepository.sumReturnedByBorrowRequestItemIds(
+      const newReturnedMap = await ctx.returnRepo.sumReturnedByBorrowRequestItemIds(
         request.items.map((item) => item.id),
       );
-      const allReturned = request.items.every((item) => {
-        const approvedQty = item.approvedQty ?? 0;
-        return approvedQty > 0 && (newReturnedMap.get(item.id) ?? 0) >= approvedQty;
-      });
+      const allReturned = isBorrowRequestFullyReturned(request, newReturnedMap);
+      const nextStatus = allReturned ? "returned" : "partially_returned";
 
-      await borrowRequestRepository.updateStatus(
-        request.id,
-        allReturned ? "returned" : "partially_returned",
-      );
+      BorrowRequestStateMachine.assertCanTransition(request.status, nextStatus);
 
-      const detail = await returnRepository.findById(transaction.id);
-      const updatedRequest = await borrowRequestRepository.findById(request.id);
+      await ctx.borrowRequestRepo.updateStatus(request.id, nextStatus);
+
+      const detail = await ctx.returnRepo.findById(transaction.id);
+      const updatedRequest = await ctx.borrowRequestRepo.findById(request.id);
 
       if (!detail || !updatedRequest) {
-        throw new NotFoundError("Return transaction not found after creation", {
+        throw new NotFoundError("ไม่พบรายการคืนหลังบันทึกข้อมูล", {
           returnTransactionId: transaction.id,
         });
       }
 
-      await auditLogService.record({
+      await ctx.auditService.record({
         actor,
         action: "return.create",
         entityType: "return_transaction",
@@ -175,21 +133,26 @@ export class ReturnService {
 
       return detail;
     });
+
+    this.notifyAsync(() => this.notificationService?.notifyReturnRecorded(detail));
+
+    return detail;
   }
 
   async updateReturn(actor: ActorContext, id: number, input: ReturnUpdateInput) {
     this.returnPolicy.assertCanManageReturns(actor);
+
     const existing = await this.getReturnById(actor, id);
     const updated = await this.returnRepository.updateNote(id, input);
 
     if (!updated) {
-      throw new NotFoundError("Return transaction not found", { returnTransactionId: id });
+      throw new NotFoundError("ไม่พบรายการคืน", { returnTransactionId: id });
     }
 
     const detail = await this.returnRepository.findById(updated.id);
 
     if (!detail) {
-      throw new NotFoundError("Return transaction not found after update", {
+      throw new NotFoundError("ไม่พบรายการคืนหลังอัปเดต", {
         returnTransactionId: id,
       });
     }
@@ -204,5 +167,11 @@ export class ReturnService {
     });
 
     return detail;
+  }
+
+  private notifyAsync(fn: () => Promise<void> | undefined) {
+    fn()?.catch((error) => {
+      logger.error("Notification delivery failed", { error });
+    });
   }
 }
