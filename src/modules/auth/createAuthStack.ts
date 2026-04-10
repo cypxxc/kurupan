@@ -12,11 +12,7 @@ export function createAuthStack(db?: DbExecutor) {
   const sessionRepository = new SessionRepository(db);
   const userAccessRepository = new UserAccessRepository(db);
   const accessService = new AccessService(userAccessRepository);
-  const currentUserResolver = new CurrentUserResolver(
-    sessionRepository,
-    accessService,
-    localAuthUserRepository,
-  );
+  const currentUserResolver = new CurrentUserResolver(sessionRepository);
   const authService = new AuthService(
     localAuthUserRepository,
     accessService,

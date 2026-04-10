@@ -49,6 +49,7 @@ export function DashboardRequestTable({
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
+            prefetch={false}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             {actionLabel}
@@ -104,6 +105,7 @@ export function DashboardRequestTable({
                       <div className="flex justify-end">
                         <Link
                           href={detailHref}
+                          prefetch={false}
                           className={buttonVariants({ variant: "ghost", size: "sm" })}
                         >
                           View details

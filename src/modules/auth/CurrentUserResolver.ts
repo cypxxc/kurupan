@@ -4,17 +4,11 @@ import { AppError } from "@/lib/errors";
 import { AuthenticationError, AuthorizationError } from "@/lib/errors";
 import { readSessionCookie, verifySignedSessionId } from "@/lib/auth";
 import type { ActorContext } from "@/types/auth";
-import { AccessService } from "@/modules/access/services/AccessService";
 
-import { LocalAuthUserRepository } from "./repositories/LocalAuthUserRepository";
 import { SessionRepository } from "./repositories/SessionRepository";
 
 export class CurrentUserResolver {
-  constructor(
-    private readonly sessionRepository: SessionRepository,
-    private readonly accessService: AccessService,
-    private readonly localAuthUserRepository: LocalAuthUserRepository,
-  ) {}
+  constructor(private readonly sessionRepository: SessionRepository) {}
 
   async resolveFromRequest(request: Request | NextRequest): Promise<ActorContext | null> {
     const signedSessionId = readSessionCookie(request);
@@ -31,10 +25,10 @@ export class CurrentUserResolver {
       return null;
     }
 
-    let session;
+    let resolvedSession;
 
     try {
-      session = await this.sessionRepository.findById(sessionId);
+      resolvedSession = await this.sessionRepository.findResolvedActorById(sessionId);
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -44,51 +38,31 @@ export class CurrentUserResolver {
       return null;
     }
 
-    if (!session) {
+    if (!resolvedSession) {
       return null;
     }
 
-    if (session.expiresAt <= new Date()) {
-      await this.sessionRepository.deleteById(session.id);
+    if (resolvedSession.expiresAt <= new Date()) {
+      await this.sessionRepository.deleteById(resolvedSession.id);
       return null;
     }
 
-    const localUser = await this.localAuthUserRepository.findById(session.externalUserId);
-    const identity =
-      localUser ??
-      ({
-        externalUserId: session.externalUserId,
-        username: session.externalUserId,
-        employeeCode: session.employeeCode,
-        fullName: session.fullName ?? session.externalUserId,
-        email: session.email,
-        department: session.department,
-        passwordHash: "",
-        isOrgActive: true,
-      } as const);
-
-    if (!identity.isOrgActive) {
-      await this.sessionRepository.deleteById(session.id);
+    if (!resolvedSession.isLocallyActive) {
+      await this.sessionRepository.deleteById(resolvedSession.id);
       throw new AuthenticationError("เซสชันหมดอายุหรือไม่ถูกต้อง");
     }
 
-    const access = await this.accessService.resolveAccess(session.externalUserId);
-
-    if (!access.isActive) {
+    if (!resolvedSession.isAccessActive) {
       throw new AuthorizationError("สิทธิ์เข้าใช้งานระบบของคุณถูกปิดใช้งาน");
     }
 
-    if (session.effectiveRole !== access.role) {
-      await this.sessionRepository.updateEffectiveRole(session.id, access.role);
+    if (resolvedSession.effectiveRole !== resolvedSession.actor.role) {
+      await this.sessionRepository.updateEffectiveRole(
+        resolvedSession.id,
+        resolvedSession.actor.role,
+      );
     }
 
-    return {
-      externalUserId: identity.externalUserId,
-      role: access.role,
-      fullName: identity.fullName,
-      email: identity.email,
-      employeeCode: identity.employeeCode,
-      department: identity.department,
-    };
+    return resolvedSession.actor;
   }
 }

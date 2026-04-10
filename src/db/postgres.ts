@@ -22,6 +22,22 @@ function getDatabaseUrl() {
   return databaseUrl;
 }
 
+function parsePoolSize(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function getPostgresPoolMax() {
+  const defaultPoolMax = process.env.NODE_ENV === "development" ? 8 : 10;
+
+  return parsePoolSize(process.env.DATABASE_POOL_MAX, defaultPoolMax);
+}
+
 async function closePostgresClientInstance() {
   const client = globalThis.__kurupanPostgresClient;
 
@@ -65,9 +81,9 @@ function registerShutdownHooks() {
 export function getPostgresClient() {
   if (!globalThis.__kurupanPostgresClient) {
     globalThis.__kurupanPostgresClient = postgres(getDatabaseUrl(), {
-      // Reuse a very small pool in local/dev to avoid exhausting Postgres slots
-      // during HMR, route reloads, and parallel server workers.
-      max: process.env.NODE_ENV === "development" ? 2 : 10,
+      // Dashboard pages fan out into several parallel queries. A pool of 2 in dev
+      // causes requests to queue behind each other and makes local navigations feel slow.
+      max: getPostgresPoolMax(),
       idle_timeout: 20,
       connect_timeout: 10,
       ssl: (process.env.NODE_ENV === "production" || process.env.APP_ENV === "production" || getDatabaseUrl().includes("sslmode=require")) ? { rejectUnauthorized: false } : false,
