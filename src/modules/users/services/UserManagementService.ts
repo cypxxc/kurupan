@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 
 import { withTransactionContext } from "@/db/postgres";
 import { ConflictError, NotFoundError } from "@/lib/errors";
+import type { PaginatedResult } from "@/lib/pagination";
 import type { UserCreateInput, UserListQuery, UserUpdateInput } from "@/lib/validators/users";
 import type { ActorContext } from "@/types/auth";
 import type { ManagedUser } from "@/types/users";
@@ -12,7 +13,6 @@ import { LocalAuthUserRepository } from "@/modules/auth/repositories/LocalAuthUs
 
 import { UserIdentityResolver } from "../domain/UserIdentityResolver";
 import {
-  matchesManagedUserSearch,
   toLocalIdentity,
   toManagedUser,
   type IdentityUser,
@@ -34,20 +34,19 @@ export class UserManagementService {
     return this.userIdentityResolver.resolveById(id);
   }
 
-  async listUsers(actor: ActorContext, filters: UserListQuery): Promise<ManagedUser[]> {
+  async listUsers(
+    actor: ActorContext,
+    filters: UserListQuery,
+  ): Promise<PaginatedResult<ManagedUser>> {
     this.accessPolicy.assertCanManageAccess(actor);
 
-    const searchTerm = filters.search.trim();
-    const searchQuery = searchTerm.toLowerCase();
-    const users = await this.userIdentityResolver.resolveAll({
-      searchTerm,
-      role: filters.role,
-      isActive: filters.isActive,
-    });
+    return this.localAuthUserRepository.findManagedUserPage(filters);
+  }
 
-    return users
-      .filter((user) => this.matchesListFilters(user, filters, searchQuery))
-      .sort((left, right) => left.fullName.localeCompare(right.fullName));
+  async getUserSummary(actor: ActorContext) {
+    this.accessPolicy.assertCanManageAccess(actor);
+
+    return this.localAuthUserRepository.getManagedUserSummary();
   }
 
   async getUserById(actor: ActorContext, id: string): Promise<ManagedUser> {
@@ -170,21 +169,5 @@ export class UserManagementService {
 
       return managedUser;
     });
-  }
-
-  private matchesListFilters(
-    user: ManagedUser,
-    filters: UserListQuery,
-    searchQuery: string,
-  ) {
-    if (filters.role && user.role !== filters.role) {
-      return false;
-    }
-
-    if (filters.isActive !== undefined && user.isActive !== filters.isActive) {
-      return false;
-    }
-
-    return matchesManagedUserSearch(user, searchQuery);
   }
 }

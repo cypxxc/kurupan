@@ -28,6 +28,7 @@ import {
 import { BorrowRequestPolicy } from "../policies/BorrowRequestPolicy";
 import {
   BorrowRequestRepository,
+  type BorrowRequestListSummary,
   type BorrowRequestDetail,
 } from "../repositories/BorrowRequestRepository";
 import {
@@ -67,6 +68,35 @@ export class BorrowRequestService {
       actor.role === "borrower" ? actor.externalUserId : filters.borrower;
 
     return this.borrowRequestRepository.findPage({
+      ...filters,
+      borrowerExternalUserId,
+    });
+  }
+
+  async listBorrowRequestSummaries(
+    actor: ActorContext,
+    filters: BorrowRequestListQuery,
+    limit: number,
+    statuses?: BorrowRequestStatus[],
+  ): Promise<BorrowRequestListSummary[]> {
+    const borrowerExternalUserId =
+      actor.role === "borrower" ? actor.externalUserId : filters.borrower;
+
+    return this.borrowRequestRepository.findSummaries(
+      {
+        ...filters,
+        borrowerExternalUserId,
+        statuses,
+      },
+      limit,
+    );
+  }
+
+  async getBorrowRequestStatusCounts(actor: ActorContext, filters: BorrowRequestListQuery) {
+    const borrowerExternalUserId =
+      actor.role === "borrower" ? actor.externalUserId : filters.borrower;
+
+    return this.borrowRequestRepository.getStatusCounts({
       ...filters,
       borrowerExternalUserId,
     });

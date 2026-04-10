@@ -1,18 +1,13 @@
 import { DashboardMetricCard } from "@/components/pages/dashboard/dashboard-metric-card";
-import type { ManagedUser } from "@/types/users";
+import type { DashboardUserSummary } from "@/components/pages/dashboard/dashboard-types";
 
 type DashboardUserStatsPanelProps = {
-  users: ManagedUser[];
+  summary: DashboardUserSummary;
 };
 
 export function DashboardUserStatsPanel({
-  users,
+  summary,
 }: DashboardUserStatsPanelProps) {
-  const activeUsers = users.filter((item) => item.isActive).length;
-  const inactiveUsers = users.filter((item) => !item.isActive).length;
-  const adminUsers = users.filter((item) => item.role === "admin").length;
-  const staffUsers = users.filter((item) => item.role === "staff").length;
-
   return (
     <section className="surface-panel surface-section">
       <h2 className="text-lg font-semibold">User summary</h2>
@@ -20,14 +15,14 @@ export function DashboardUserStatsPanel({
         Overview of access and account status across the workspace.
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <DashboardMetricCard label="Total users" value={users.length} />
-        <DashboardMetricCard label="Active users" value={activeUsers} tone="emerald" />
-        <DashboardMetricCard label="Staff accounts" value={staffUsers} tone="sky" />
-        <DashboardMetricCard label="Admin accounts" value={adminUsers} tone="amber" />
+        <DashboardMetricCard label="Total users" value={summary.totalUsers} />
+        <DashboardMetricCard label="Active users" value={summary.activeUsers} tone="emerald" />
+        <DashboardMetricCard label="Staff accounts" value={summary.staffUsers} tone="sky" />
+        <DashboardMetricCard label="Admin accounts" value={summary.adminUsers} tone="amber" />
       </div>
-      {inactiveUsers > 0 ? (
+      {summary.inactiveUsers > 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          Inactive accounts: {inactiveUsers}
+          Inactive accounts: {summary.inactiveUsers}
         </p>
       ) : null}
     </section>

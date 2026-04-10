@@ -108,3 +108,5 @@ coverage/
 
 # User uploads
 /public/uploads/
+
+.vercel

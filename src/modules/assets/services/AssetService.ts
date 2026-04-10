@@ -12,7 +12,10 @@ import { AuditLogService } from "@/modules/audit/services/AuditLogService";
 
 import { AssetPolicy } from "../policies/AssetPolicy";
 import { AssetImageRepository } from "../repositories/AssetImageRepository";
-import { AssetRepository } from "../repositories/AssetRepository";
+import {
+  AssetRepository,
+  type AssetDashboardSummary,
+} from "../repositories/AssetRepository";
 
 type AssetImageRecordInput = {
   storageKey: string;
@@ -36,6 +39,10 @@ export class AssetService {
     filters: AssetListQuery,
   ): Promise<PaginatedResult<Awaited<ReturnType<AssetRepository["findMany"]>>[number]>> {
     return this.assetRepository.findPage(filters);
+  }
+
+  async getDashboardSummary(): Promise<AssetDashboardSummary> {
+    return this.assetRepository.getDashboardSummary();
   }
 
   async getAssetById(id: number) {

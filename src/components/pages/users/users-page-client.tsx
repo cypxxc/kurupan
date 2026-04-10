@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,18 +25,83 @@ import {
 } from "@/components/ui/card";
 import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
+import type { PaginatedResult } from "@/lib/pagination";
 import type { ManagedUser } from "@/types/users";
+import type { ManagedUserSummary } from "@/modules/auth/repositories/LocalAuthUserRepository";
 
-export function UsersPageClient() {
+const PAGE_SIZE = 10;
+
+function createEmptyUserPage(page = 1): PaginatedResult<ManagedUser> {
+  return {
+    items: [],
+    page,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  };
+}
+
+function applyManagedUserSummaryUpdate(
+  summary: ManagedUserSummary,
+  previousUser: ManagedUser,
+  nextUser: ManagedUser,
+): ManagedUserSummary {
+  const nextSummary = { ...summary };
+
+  if (previousUser.isActive !== nextUser.isActive) {
+    if (nextUser.isActive) {
+      nextSummary.activeUsers += 1;
+      nextSummary.inactiveUsers = Math.max(0, nextSummary.inactiveUsers - 1);
+    } else {
+      nextSummary.activeUsers = Math.max(0, nextSummary.activeUsers - 1);
+      nextSummary.inactiveUsers += 1;
+    }
+  }
+
+  if (previousUser.role !== nextUser.role) {
+    if (previousUser.role === "admin") {
+      nextSummary.adminUsers = Math.max(0, nextSummary.adminUsers - 1);
+    }
+
+    if (previousUser.role === "staff") {
+      nextSummary.staffUsers = Math.max(0, nextSummary.staffUsers - 1);
+    }
+
+    if (nextUser.role === "admin") {
+      nextSummary.adminUsers += 1;
+    }
+
+    if (nextUser.role === "staff") {
+      nextSummary.staffUsers += 1;
+    }
+  }
+
+  return nextSummary;
+}
+
+export function UsersPageClient({
+  initialPage,
+  initialSummary,
+}: {
+  initialPage: PaginatedResult<ManagedUser>;
+  initialSummary: ManagedUserSummary;
+}) {
   const { user, loading } = useAuth();
-  const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [users, setUsers] = useState<ManagedUser[]>(initialPage.items);
+  const [pagination, setPagination] = useState<PaginatedResult<ManagedUser>>(initialPage);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
   const [drafts, setDrafts] = useState<ManagedUserDraftMap>({});
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [page, setPage] = useState(initialPage.page);
+  const [userSummary, setUserSummary] = useState(initialSummary);
+  const skipInitialFetch = useRef(true);
+  const previousFilterKeyRef = useRef("");
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -46,8 +111,23 @@ export function UsersPageClient() {
     return () => window.clearTimeout(timeoutId);
   }, [searchInput]);
 
+  useEffect(() => {
+    setUsers(initialPage.items);
+    setPagination(initialPage);
+    setPage(initialPage.page);
+    setDrafts(buildManagedUserDraftMap(initialPage.items));
+    setLoadingUsers(false);
+  }, [initialPage]);
+
+  useEffect(() => {
+    setUserSummary(initialSummary);
+  }, [initialSummary]);
+
   const fetchUsers = useCallback(async () => {
     if (user?.role !== "admin") {
+      setUsers([]);
+      setPagination(createEmptyUserPage());
+      setDrafts({});
       setLoadingUsers(false);
       return;
     }
@@ -69,31 +149,45 @@ export function UsersPageClient() {
         params.set("isActive", activeFilter);
       }
 
-      const data = await apiClient.get<ManagedUser[]>("/api/users", { query: params });
-      setUsers(data);
-      setDrafts(buildManagedUserDraftMap(data));
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+
+      const data = await apiClient.get<PaginatedResult<ManagedUser>>("/api/users", {
+        query: params,
+      });
+
+      setUsers(data.items);
+      setPagination(data);
+      setDrafts(buildManagedUserDraftMap(data.items));
     } catch (error) {
       toast.error(getApiErrorMessage(error, "An error occurred while loading users."));
       setUsers([]);
+      setPagination(createEmptyUserPage(page));
       setDrafts({});
     } finally {
       setLoadingUsers(false);
     }
-  }, [activeFilter, debouncedSearch, roleFilter, user?.role]);
+  }, [activeFilter, debouncedSearch, page, roleFilter, user?.role]);
 
   useEffect(() => {
-    void fetchUsers();
-  }, [fetchUsers]);
+    const filterKey = `${debouncedSearch}|${roleFilter}|${activeFilter}`;
 
-  const totalUsers = users.length;
-  const activeUsers = useMemo(
-    () => users.filter((managedUser) => managedUser.isActive).length,
-    [users],
-  );
-  const adminUsers = useMemo(
-    () => users.filter((managedUser) => managedUser.role === "admin").length,
-    [users],
-  );
+    if (skipInitialFetch.current) {
+      skipInitialFetch.current = false;
+      previousFilterKeyRef.current = filterKey;
+      setDrafts(buildManagedUserDraftMap(initialPage.items));
+      return;
+    }
+
+    if (previousFilterKeyRef.current !== filterKey && page !== 1) {
+      previousFilterKeyRef.current = filterKey;
+      setPage(1);
+      return;
+    }
+
+    previousFilterKeyRef.current = filterKey;
+    void fetchUsers();
+  }, [activeFilter, debouncedSearch, fetchUsers, initialPage.items, page, roleFilter]);
 
   const updateDraft = (externalUserId: string, nextDraft: Partial<UserDraft>) => {
     setDrafts((current) => ({
@@ -127,6 +221,7 @@ export function UsersPageClient() {
           item.externalUserId === managedUser.externalUserId ? data : item,
         ),
       );
+      setUserSummary((current) => applyManagedUserSummaryUpdate(current, managedUser, data));
       setDrafts((current) => ({
         ...current,
         [managedUser.externalUserId]: {
@@ -194,9 +289,9 @@ export function UsersPageClient() {
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <UsersMetricCard label="Managed users" value={totalUsers} />
-        <UsersMetricCard label="Active users" value={activeUsers} />
-        <UsersMetricCard label="Admin users" value={adminUsers} />
+        <UsersMetricCard label="Managed users" value={userSummary.totalUsers} />
+        <UsersMetricCard label="Active users" value={userSummary.activeUsers} />
+        <UsersMetricCard label="Admin users" value={userSummary.adminUsers} />
       </section>
 
       <div className="space-y-6">
@@ -213,11 +308,16 @@ export function UsersPageClient() {
         <ManagedUsersTable
           users={users}
           loading={loadingUsers}
+          page={pagination.page}
+          limit={pagination.limit}
+          total={pagination.total}
+          totalPages={pagination.totalPages}
           drafts={drafts}
           currentUserExternalId={user.externalUserId}
           savingUserId={savingUserId}
           onDraftChange={updateDraft}
           onSave={(managedUser) => void handleSaveUser(managedUser)}
+          onPageChange={setPage}
         />
       </div>
     </div>

@@ -18,6 +18,14 @@ import {
 } from "@/lib/pagination";
 import type { AssetActivity } from "@/types/assets";
 
+export type AssetDashboardSummary = {
+  totalAssets: number;
+  availableAssets: number;
+  maintenanceAssets: number;
+  retiredAssets: number;
+  borrowableAssets: number;
+};
+
 export class AssetRepository {
   constructor(private readonly db: DbExecutor = getDb()) {}
 
@@ -59,6 +67,30 @@ export class AssetRepository {
     const items = await this.attachPrimaryImageUrls(records);
 
     return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
+  }
+
+  async getDashboardSummary(): Promise<AssetDashboardSummary> {
+    const [row] = await this.db
+      .select({
+        totalAssets: count(),
+        availableAssets:
+          sql<number>`count(*) filter (where ${assets.status} = 'available')`,
+        maintenanceAssets:
+          sql<number>`count(*) filter (where ${assets.status} = 'maintenance')`,
+        retiredAssets:
+          sql<number>`count(*) filter (where ${assets.status} = 'retired')`,
+        borrowableAssets:
+          sql<number>`count(*) filter (where ${assets.status} = 'available' and ${assets.availableQty} > 0)`,
+      })
+      .from(assets);
+
+    return {
+      totalAssets: Number(row?.totalAssets ?? 0),
+      availableAssets: Number(row?.availableAssets ?? 0),
+      maintenanceAssets: Number(row?.maintenanceAssets ?? 0),
+      retiredAssets: Number(row?.retiredAssets ?? 0),
+      borrowableAssets: Number(row?.borrowableAssets ?? 0),
+    };
   }
 
   async findById(id: number) {

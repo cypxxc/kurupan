@@ -24,7 +24,13 @@
       "Bash(git remote:*)",
       "Bash(git push:*)",
       "Bash(npm run:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(grep -E \"\\\\.\\(json|ts\\)$\")",
+      "Bash(grep -r \"^[[:space:]]*//.*console\\\\|^[[:space:]]*\\\\/\\\\*.*console\" /d/kurupanv1/src --include=\"*.ts\" --include=\"*.tsx\")",
+      "Bash(xargs grep:*)",
+      "Bash(find /d/kurupanv1/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l \"^[[:space:]]*//.*\" {} \\\\;)",
+      "Bash(ls src/db/migrations/*.sql)",
+      "Bash(node -e ':*)"
     ]
   }
 }

@@ -17,6 +17,7 @@ import {
   type PaginatedResult,
 } from "@/lib/pagination";
 import type { BorrowRequestStatus } from "@/modules/borrow/domain/BorrowRequestStateMachine";
+import { BORROW_REQUEST_STATUS_VALUES } from "@/types/borrow-requests";
 
 export type BorrowRequestItemView = {
   id: number;
@@ -31,6 +32,14 @@ export type BorrowRequestItemView = {
 export type BorrowRequestDetail = typeof borrowRequests.$inferSelect & {
   borrowerName: string;
   items: BorrowRequestItemView[];
+};
+
+export type BorrowRequestListSummary = {
+  id: number;
+  requestNo: string;
+  borrowerName: string;
+  dueDate: string;
+  status: BorrowRequestStatus;
 };
 
 type BorrowRequestListFilters = BorrowRequestListQuery & {
@@ -67,6 +76,70 @@ export class BorrowRequestRepository {
       conditions.length > 0 ? await query.where(and(...conditions)) : await query;
 
     return this.attachRelations(requests);
+  }
+
+  async findSummaries(
+    filters: BorrowRequestListFilters & { statuses?: BorrowRequestStatus[] },
+    limit: number,
+  ): Promise<BorrowRequestListSummary[]> {
+    const conditions = this.buildConditions(filters);
+
+    if (filters.statuses && filters.statuses.length > 0) {
+      conditions.push(inArray(borrowRequests.status, filters.statuses));
+    }
+
+    const query = this.db
+      .select({
+        id: borrowRequests.id,
+        requestNo: borrowRequests.requestNo,
+        borrowerExternalUserId: borrowRequests.borrowerExternalUserId,
+        borrowerName: localAuthUsers.fullName,
+        dueDate: borrowRequests.dueDate,
+        status: borrowRequests.status,
+      })
+      .from(borrowRequests)
+      .leftJoin(
+        localAuthUsers,
+        eq(borrowRequests.borrowerExternalUserId, localAuthUsers.externalUserId),
+      )
+      .orderBy(...this.listOrder)
+      .limit(limit);
+
+    const rows =
+      conditions.length > 0 ? await query.where(and(...conditions)) : await query;
+
+    return rows.map((row) => ({
+      id: row.id,
+      requestNo: row.requestNo,
+      borrowerName: row.borrowerName ?? row.borrowerExternalUserId,
+      dueDate: row.dueDate,
+      status: row.status,
+    }));
+  }
+
+  async getStatusCounts(
+    filters: BorrowRequestListFilters,
+  ): Promise<Record<BorrowRequestStatus, number>> {
+    const conditions = this.buildConditions(filters);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const rows = await this.db
+      .select({
+        status: borrowRequests.status,
+        total: count(),
+      })
+      .from(borrowRequests)
+      .where(whereClause)
+      .groupBy(borrowRequests.status);
+
+    const counts = Object.fromEntries(
+      BORROW_REQUEST_STATUS_VALUES.map((status) => [status, 0]),
+    ) as Record<BorrowRequestStatus, number>;
+
+    for (const row of rows) {
+      counts[row.status] = Number(row.total);
+    }
+
+    return counts;
   }
 
   async findPage(

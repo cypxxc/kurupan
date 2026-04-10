@@ -17,27 +17,42 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import type { ManagedUser } from "@/types/users";
 
 type ManagedUsersTableProps = {
   users: ManagedUser[];
   loading: boolean;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
   drafts: ManagedUserDraftMap;
   currentUserExternalId?: string;
   savingUserId: string | null;
   onDraftChange: (externalUserId: string, nextDraft: Partial<UserDraft>) => void;
   onSave: (user: ManagedUser) => void;
+  onPageChange: (page: number) => void;
 };
 
 export function ManagedUsersTable({
   users,
   loading,
+  page,
+  limit,
+  total,
+  totalPages,
   drafts,
   currentUserExternalId,
   savingUserId,
   onDraftChange,
   onSave,
+  onPageChange,
 }: ManagedUsersTableProps) {
+  const currentPage = Math.min(page, Math.max(1, totalPages));
+  const startItem = total === 0 ? 0 : (currentPage - 1) * limit + 1;
+  const endItem = total === 0 ? 0 : Math.min(currentPage * limit, total);
+
   return (
     <Card className="surface-panel">
       <CardHeader>
@@ -151,6 +166,16 @@ export function ManagedUsersTable({
             )}
           </TableBody>
         </Table>
+        <div className="flex flex-col gap-3 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground">
+            Showing {startItem}-{endItem} of {total} users
+          </p>
+          <PaginationControls
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
+          />
+        </div>
       </CardContent>
     </Card>
   );

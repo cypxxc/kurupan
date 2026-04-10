@@ -1,4 +1,3 @@
-import type { Asset } from "@/types/assets";
 import type { BorrowRequest } from "@/types/borrow-requests";
 
 export type DashboardRequest = {
@@ -9,4 +8,20 @@ export type DashboardRequest = {
   status: BorrowRequest["status"];
 };
 
-export type DashboardAsset = Pick<Asset, "status" | "availableQty">;
+export type DashboardRequestStatusCounts = Record<BorrowRequest["status"], number>;
+
+export type DashboardAssetSummary = {
+  totalAssets: number;
+  availableAssets: number;
+  maintenanceAssets: number;
+  retiredAssets: number;
+  borrowableAssets: number;
+};
+
+export type DashboardUserSummary = {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  adminUsers: number;
+  staffUsers: number;
+};

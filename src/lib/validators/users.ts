@@ -19,6 +19,8 @@ export const userListQuerySchema = z.object({
       return value === "true";
     }),
   search: z.string().trim().max(255).optional().default(""),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export const userCreateSchema = z.object({

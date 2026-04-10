@@ -2,11 +2,11 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 
-import type { DashboardRequest } from "@/components/pages/dashboard/dashboard-types";
+import type { DashboardRequestStatusCounts } from "@/components/pages/dashboard/dashboard-types";
 import { BORROW_REQUEST_STATUS_VALUES, type BorrowRequestStatus } from "@/types/borrow-requests";
 
 type DashboardRequestStatusChartProps = {
-  requests: DashboardRequest[];
+  counts: DashboardRequestStatusCounts;
 };
 
 type StatusChartConfig = {
@@ -54,7 +54,7 @@ function formatRatio(value: number, total: number) {
 }
 
 export function DashboardRequestStatusChart({
-  requests,
+  counts,
 }: DashboardRequestStatusChartProps) {
   const [isChartReady, setIsChartReady] = useState(false);
 
@@ -72,18 +72,6 @@ export function DashboardRequestStatusChart({
     };
   }, []);
 
-  const counts = BORROW_REQUEST_STATUS_VALUES.reduce<Record<BorrowRequestStatus, number>>(
-    (accumulator, status) => {
-      accumulator[status] = 0;
-      return accumulator;
-    },
-    {} as Record<BorrowRequestStatus, number>,
-  );
-
-  for (const request of requests) {
-    counts[request.status] += 1;
-  }
-
   const chartItems = BORROW_REQUEST_STATUS_VALUES.map((status) => ({
     status,
     label: STATUS_CHART_CONFIG[status].label,
@@ -92,7 +80,7 @@ export function DashboardRequestStatusChart({
   }));
 
   const maxValue = Math.max(...chartItems.map((item) => item.count), 1);
-  const totalRequests = requests.length;
+  const totalRequests = chartItems.reduce((sum, item) => sum + item.count, 0);
   const resolvedRequests = counts.returned + counts.rejected + counts.cancelled;
   const inProgressRequests =
     counts.pending +
