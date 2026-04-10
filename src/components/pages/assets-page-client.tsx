@@ -55,6 +55,7 @@ export function AssetsPageClient({
   });
   const skipInitialFetch = useRef(true);
   const filterKeyRef = useRef("");
+  const pendingScrollRestoreRef = useRef<number | null>(null);
 
   const canManage = user?.role === "staff" || user?.role === "admin";
   const filterKey = [
@@ -147,6 +148,31 @@ export function AssetsPageClient({
 
     void fetchAssets();
   }, [fetchAssets, filterKey, page]);
+
+  useEffect(() => {
+    if (loading || pendingScrollRestoreRef.current === null) {
+      return;
+    }
+
+    const scrollY = pendingScrollRestoreRef.current;
+    pendingScrollRestoreRef.current = null;
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+    });
+  }, [loading]);
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      if (nextPage === page) {
+        return;
+      }
+
+      pendingScrollRestoreRef.current = window.scrollY;
+      setPage(nextPage);
+    },
+    [page],
+  );
 
   const categories = useMemo(() => {
     const options = [...fieldOptions.categories].sort((left, right) =>
@@ -319,7 +345,7 @@ export function AssetsPageClient({
         limit={pagination.limit}
         total={pagination.total}
         totalPages={pagination.totalPages}
-        onPageChange={setPage}
+        onPageChange={handlePageChange}
       />
     </div>
   );
