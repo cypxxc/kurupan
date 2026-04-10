@@ -46,6 +46,20 @@ export class ReturnService {
     });
   }
 
+  async listReturnsPage(actor: ActorContext, filters: ReturnListQuery) {
+    const borrowerExternalUserId =
+      actor.role === "borrower" ? actor.externalUserId : undefined;
+
+    if (!borrowerExternalUserId) {
+      this.returnPolicy.assertCanManageReturns(actor);
+    }
+
+    return this.returnRepository.findPage({
+      ...filters,
+      borrowerExternalUserId,
+    });
+  }
+
   async getReturnById(actor: ActorContext, id: number) {
     const record = await this.returnRepository.findById(id);
 
@@ -82,21 +96,27 @@ export class ReturnService {
 
       await ctx.returnRepo.insertItems(transaction.id, input.items);
 
-      for (const item of input.items) {
-        const requestItem = requestItemsById.get(item.borrowRequestItemId);
+      const assetResults = await Promise.all(
+        input.items.map((item) => {
+          const requestItem = requestItemsById.get(item.borrowRequestItemId);
 
-        if (!requestItem) {
-          continue;
-        }
+          if (!requestItem) return Promise.resolve(null);
 
-        const asset =
-          item.condition === "lost"
-            ? await ctx.assetRepo.decrementTotalQty(requestItem.assetId, item.returnQty)
-            : item.condition === "damaged"
-              ? await ctx.assetRepo.updateStatus(requestItem.assetId, "maintenance")
-              : await ctx.assetRepo.incrementAvailableQty(requestItem.assetId, item.returnQty);
+          if (item.condition === "lost") {
+            return ctx.assetRepo.decrementTotalQty(requestItem.assetId, item.returnQty);
+          } else if (item.condition === "damaged") {
+            return ctx.assetRepo.updateStatus(requestItem.assetId, "maintenance");
+          } else {
+            return ctx.assetRepo.incrementAvailableQty(requestItem.assetId, item.returnQty);
+          }
+        }),
+      );
 
-        if (!asset) {
+      for (let i = 0; i < input.items.length; i++) {
+        const requestItem = requestItemsById.get(input.items[i]!.borrowRequestItemId);
+        if (!requestItem) continue;
+
+        if (!assetResults[i]) {
           throw new NotFoundError("ไม่พบครุภัณฑ์ระหว่างบันทึกการคืน", {
             assetId: requestItem.assetId,
           });

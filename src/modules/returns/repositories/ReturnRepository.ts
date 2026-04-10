@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import {
@@ -9,6 +9,11 @@ import {
   returnTransactionItems,
   returnTransactions,
 } from "@/db/schema";
+import {
+  buildPaginatedResult,
+  resolvePagination,
+  type PaginatedResult,
+} from "@/lib/pagination";
 import type {
   ReturnCreateInput,
   ReturnListQuery,
@@ -39,17 +44,7 @@ export class ReturnRepository {
   async findMany(
     filters: ReturnListQuery & { borrowerExternalUserId?: string },
   ): Promise<ReturnTransactionDetail[]> {
-    const conditions = [];
-
-    if (filters.borrowRequestId) {
-      conditions.push(eq(returnTransactions.borrowRequestId, filters.borrowRequestId));
-    }
-
-    if (filters.borrowerExternalUserId) {
-      conditions.push(
-        eq(borrowRequests.borrowerExternalUserId, filters.borrowerExternalUserId),
-      );
-    }
+    const conditions = this.buildConditions(filters);
 
     const query = this.db
       .select({
@@ -63,6 +58,50 @@ export class ReturnRepository {
       conditions.length > 0 ? await query.where(and(...conditions)) : await query;
 
     return this.attachRelations(rows.map((row) => row.record));
+  }
+
+  private buildConditions(filters: ReturnListQuery & { borrowerExternalUserId?: string }) {
+    const conditions = [];
+
+    if (filters.borrowRequestId) {
+      conditions.push(eq(returnTransactions.borrowRequestId, filters.borrowRequestId));
+    }
+
+    if (filters.borrowerExternalUserId) {
+      conditions.push(
+        eq(borrowRequests.borrowerExternalUserId, filters.borrowerExternalUserId),
+      );
+    }
+
+    return conditions;
+  }
+
+  async findPage(
+    filters: ReturnListQuery & { borrowerExternalUserId?: string },
+    defaultLimit = 10,
+  ): Promise<PaginatedResult<ReturnTransactionDetail>> {
+    const pagination = resolvePagination(filters, defaultLimit);
+    const conditions = this.buildConditions(filters);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await this.db
+      .select({ total: count() })
+      .from(returnTransactions)
+      .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
+      .where(whereClause);
+
+    const query = this.db
+      .select({ record: returnTransactions })
+      .from(returnTransactions)
+      .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
+      .orderBy(desc(returnTransactions.returnedAt), desc(returnTransactions.id))
+      .limit(pagination.limit)
+      .offset(pagination.offset);
+
+    const rows = whereClause ? await query.where(whereClause) : await query;
+    const items = await this.attachRelations(rows.map((row) => row.record));
+
+    return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
   }
 
   async findById(id: number): Promise<ReturnTransactionDetail | null> {
@@ -172,7 +211,9 @@ export class ReturnRepository {
     const ids = rows.map((row) => row.id);
     const borrowRequestIds = Array.from(new Set(rows.map((row) => row.borrowRequestId)));
 
-    const [items, requests] = await Promise.all([
+    // Fetch items, requests, and borrowers in parallel.
+    // Borrowers are fetched via a subquery on borrowRequests to avoid a sequential round-trip.
+    const [items, requests, borrowers] = await Promise.all([
       this.db
         .select({
           id: returnTransactionItems.id,
@@ -200,26 +241,24 @@ export class ReturnRepository {
         })
         .from(borrowRequests)
         .where(inArray(borrowRequests.id, borrowRequestIds)),
+      this.db
+        .select({
+          externalUserId: localAuthUsers.externalUserId,
+          fullName: localAuthUsers.fullName,
+        })
+        .from(localAuthUsers)
+        .where(
+          inArray(
+            localAuthUsers.externalUserId,
+            this.db
+              .select({ v: borrowRequests.borrowerExternalUserId })
+              .from(borrowRequests)
+              .where(inArray(borrowRequests.id, borrowRequestIds)),
+          ),
+        ),
     ]);
 
     const requestMapSeed = new Map(requests.map((request) => [request.id, request]));
-    const borrowerIds = Array.from(
-      new Set(
-        requests
-          .map((request) => request.borrowerExternalUserId)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
-    const borrowers =
-      borrowerIds.length === 0
-        ? []
-        : await this.db
-            .select({
-              externalUserId: localAuthUsers.externalUserId,
-              fullName: localAuthUsers.fullName,
-            })
-            .from(localAuthUsers)
-            .where(inArray(localAuthUsers.externalUserId, borrowerIds));
 
     const itemsByReturnId = new Map<number, ReturnTransactionItemView[]>();
 

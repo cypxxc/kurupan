@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -18,7 +19,10 @@ import {
 import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import type { PaginatedResult } from "@/lib/pagination";
 import type { ReturnTransaction } from "@/types/returns";
+
+const PAGE_SIZE = 10;
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
@@ -30,25 +34,39 @@ function formatDateTime(value: string) {
 export default function ReturnsPage() {
   const { user } = useAuth();
   const [returns, setReturns] = useState<ReturnTransaction[]>([]);
+  const [pagination, setPagination] = useState<PaginatedResult<ReturnTransaction> | null>(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const skipInitialFetch = useRef(false);
 
   const canManage = user?.role === "staff" || user?.role === "admin";
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
 
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_SIZE));
+
     try {
-      const data = await apiClient.get<ReturnTransaction[]>("/api/returns");
-      setReturns(data);
+      const data = await apiClient.get<PaginatedResult<ReturnTransaction>>("/api/returns", {
+        query: params,
+      });
+      setReturns(data.items);
+      setPagination(data);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "เกิดข้อผิดพลาดระหว่างโหลดรายการคืน"));
       setReturns([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
+    if (skipInitialFetch.current) {
+      return;
+    }
+
     void fetchReturns();
   }, [fetchReturns]);
 
@@ -94,16 +112,16 @@ export default function ReturnsPage() {
       <div className="grid gap-3 md:grid-cols-3">
         <div className="metric-tile">
           <p className="text-sm text-muted-foreground">ธุรกรรมคืนทั้งหมด</p>
-          <p className="mt-2 text-3xl font-semibold">{returns.length}</p>
+          <p className="mt-2 text-3xl font-semibold">{pagination?.total ?? "—"}</p>
         </div>
         <div className="metric-tile">
-          <p className="text-sm text-muted-foreground">คำขอที่มีการคืนแล้ว</p>
+          <p className="text-sm text-muted-foreground">คำขอที่มีการคืนแล้ว (หน้านี้)</p>
           <p className="mt-2 text-3xl font-semibold text-sky-600 dark:text-sky-400">
             {uniqueRequests}
           </p>
         </div>
         <div className="metric-tile">
-          <p className="text-sm text-muted-foreground">จำนวนหน่วยที่คืนสะสม</p>
+          <p className="text-sm text-muted-foreground">จำนวนหน่วยที่คืน (หน้านี้)</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-600 dark:text-emerald-400">
             {totalReturnedQty}
           </p>
@@ -126,7 +144,7 @@ export default function ReturnsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                Array.from({ length: 5 }).map((_, index) => (
+                Array.from({ length: PAGE_SIZE }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell><div className="h-4 w-28 animate-pulse rounded bg-muted" /></TableCell>
                     <TableCell><div className="h-4 w-24 animate-pulse rounded bg-muted" /></TableCell>
@@ -195,6 +213,21 @@ export default function ReturnsPage() {
             </TableBody>
           </Table>
         </div>
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <p className="text-sm text-muted-foreground">
+              ทั้งหมด {pagination.total} รายการ
+            </p>
+            <PaginationControls
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              onPageChange={setPage}
+              previousLabel="ก่อนหน้า"
+              nextLabel="ถัดไป"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

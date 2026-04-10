@@ -78,6 +78,13 @@
       "when": 1775792872905,
       "tag": "0010_fine_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775800733837,
+      "tag": "0011_odd_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

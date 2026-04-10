@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lte, type SQLWrapper } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, or, sql, type SQLWrapper } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import { auditLogs, localAuthUsers } from "@/db/schema";
@@ -49,8 +49,16 @@ export class AuditLogRepository {
     return record;
   }
 
-  async findMany(filters: AuditLogListQuery): Promise<AuditLogRecord[]> {
-    const rows = await this.selectRecords(this.buildConditions(filters));
+  async findMany(
+    filters: AuditLogListQuery,
+    actorExternalUserId?: string,
+  ): Promise<AuditLogRecord[]> {
+    const rows = await this.selectRecords(
+      this.buildConditions(filters, actorExternalUserId),
+      undefined,
+      undefined,
+      true,
+    );
 
     return rows.map((row) => ({
       ...row,
@@ -61,8 +69,10 @@ export class AuditLogRepository {
   async findPage(
     filters: AuditLogListQuery,
     defaultLimit = 20,
+    actorExternalUserId?: string,
+    includeData = false,
   ): Promise<PaginatedResult<AuditLogRecord>> {
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, actorExternalUserId);
     const pagination = resolvePagination(filters, defaultLimit);
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -74,6 +84,7 @@ export class AuditLogRepository {
       conditions,
       pagination.limit,
       pagination.offset,
+      includeData,
     );
 
     return buildPaginatedResult(
@@ -86,7 +97,10 @@ export class AuditLogRepository {
     );
   }
 
-  private buildConditions(filters: AuditLogListQuery) {
+  private buildConditions(
+    filters: AuditLogListQuery,
+    actorExternalUserId?: string,
+  ) {
     const conditions: SQLWrapper[] = [];
 
     if (filters.entityType) {
@@ -109,10 +123,37 @@ export class AuditLogRepository {
       conditions.push(lte(auditLogs.createdAt, toDateRangeEnd(filters.dateTo)));
     }
 
+    if (actorExternalUserId) {
+      const borrowRequestBorrowerId =
+        sql<string | null>`coalesce(${auditLogs.afterData}->>'borrowerExternalUserId', ${auditLogs.beforeData}->>'borrowerExternalUserId')`;
+      const returnBorrowerId =
+        sql<string | null>`coalesce(${auditLogs.afterData}->'borrowRequest'->>'borrowerExternalUserId', ${auditLogs.beforeData}->'borrowRequest'->>'borrowerExternalUserId')`;
+      // Match logs where the user was the actor, the subject of a borrow request,
+      // or the subject of a return transaction — equivalent to logBelongsToBorrower().
+      conditions.push(
+        or(
+          eq(auditLogs.actorExternalUserId, actorExternalUserId),
+          and(
+            eq(auditLogs.entityType, "borrow_request"),
+            sql`${borrowRequestBorrowerId} = ${actorExternalUserId}`,
+          ),
+          and(
+            eq(auditLogs.entityType, "return_transaction"),
+            sql`${returnBorrowerId} = ${actorExternalUserId}`,
+          ),
+        )!,
+      );
+    }
+
     return conditions;
   }
 
-  private async selectRecords(conditions: SQLWrapper[], limit?: number, offset?: number) {
+  private async selectRecords(
+    conditions: SQLWrapper[],
+    limit?: number,
+    offset?: number,
+    includeData = true,
+  ) {
     const query = this.db
       .select({
         id: auditLogs.id,
@@ -120,8 +161,9 @@ export class AuditLogRepository {
         action: auditLogs.action,
         entityType: auditLogs.entityType,
         entityId: auditLogs.entityId,
-        beforeData: auditLogs.beforeData,
-        afterData: auditLogs.afterData,
+        // Skip JSONB columns when not needed — they can be 10–100KB per row.
+        beforeData: includeData ? auditLogs.beforeData : sql<null>`null`,
+        afterData: includeData ? auditLogs.afterData : sql<null>`null`,
         createdAt: auditLogs.createdAt,
         actorName: localAuthUsers.fullName,
       })

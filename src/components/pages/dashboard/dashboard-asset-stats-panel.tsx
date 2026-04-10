@@ -4,64 +4,70 @@ import { startTransition, useEffect, useState } from "react";
 
 import { DashboardMetricCard } from "@/components/pages/dashboard/dashboard-metric-card";
 import { apiClient } from "@/lib/api-client";
-import type { DashboardAsset } from "@/components/pages/dashboard/dashboard-types";
+import type { DashboardAssetSummary } from "@/components/pages/dashboard/dashboard-types";
 
 type DashboardAssetStatsPanelProps = {
-  assets: DashboardAsset[];
+  summary: DashboardAssetSummary;
 };
 
 const ASSET_SUMMARY_POLL_INTERVAL_MS = 20_000;
 
 export function DashboardAssetStatsPanel({
-  assets,
+  summary,
 }: DashboardAssetStatsPanelProps) {
-  const [liveAssets, setLiveAssets] = useState(assets);
+  const [liveSummary, setLiveSummary] = useState(summary);
 
   useEffect(() => {
     let active = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const refreshAssets = async () => {
-      try {
-        const data = await apiClient.get<
-          Array<{
-            status: DashboardAsset["status"];
-            availableQty: number;
-          }>
-        >("/api/assets", { cache: "no-store" });
+      if (document.hidden) return;
 
-        if (!active) {
-          return;
-        }
+      try {
+        const data = await apiClient.get<DashboardAssetSummary>("/api/assets/summary", {
+          cache: "no-store",
+        });
+
+        if (!active) return;
 
         startTransition(() => {
-          setLiveAssets(
-            data.map((asset) => ({
-              status: asset.status,
-              availableQty: asset.availableQty,
-            })),
-          );
+          setLiveSummary(data);
         });
       } catch {
         // Keep the last successful snapshot if the background refresh fails.
       }
     };
 
-    const intervalId = setInterval(() => {
-      void refreshAssets();
-    }, ASSET_SUMMARY_POLL_INTERVAL_MS);
+    const startPolling = () => {
+      if (intervalId !== null) return;
+      intervalId = setInterval(() => void refreshAssets(), ASSET_SUMMARY_POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (intervalId === null) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        void refreshAssets();
+        startPolling();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    startPolling();
 
     return () => {
       active = false;
-      clearInterval(intervalId);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
-
-  const availableAssets = liveAssets.filter((asset) => asset.status === "available").length;
-  const maintenanceAssets = liveAssets.filter((asset) => asset.status === "maintenance").length;
-  const retiredAssets = liveAssets.filter((asset) => asset.status === "retired").length;
-  const borrowableAssets = liveAssets.filter(
-    (asset) => asset.status === "available" && asset.availableQty > 0,
-  ).length;
 
   return (
     <section className="surface-panel surface-section">
@@ -73,13 +79,27 @@ export function DashboardAssetStatsPanel({
         Updates automatically every 20 seconds.
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <DashboardMetricCard label="Total assets" value={liveAssets.length} />
-        <DashboardMetricCard label="Ready to borrow" value={borrowableAssets} tone="emerald" />
-        <DashboardMetricCard label="Available items" value={availableAssets} tone="sky" />
-        <DashboardMetricCard label="In maintenance" value={maintenanceAssets} tone="amber" />
+        <DashboardMetricCard label="Total assets" value={liveSummary.totalAssets} />
+        <DashboardMetricCard
+          label="Ready to borrow"
+          value={liveSummary.borrowableAssets}
+          tone="emerald"
+        />
+        <DashboardMetricCard
+          label="Available items"
+          value={liveSummary.availableAssets}
+          tone="sky"
+        />
+        <DashboardMetricCard
+          label="In maintenance"
+          value={liveSummary.maintenanceAssets}
+          tone="amber"
+        />
       </div>
-      {retiredAssets > 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Retired items: {retiredAssets}</p>
+      {liveSummary.retiredAssets > 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Retired items: {liveSummary.retiredAssets}
+        </p>
       ) : null}
     </section>
   );

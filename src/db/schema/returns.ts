@@ -34,5 +34,8 @@ export const returnTransactionItems = pgTable(
     condition: returnConditionEnum("condition").notNull(),
     note: text("note"),
   },
-  (table) => [check("return_transaction_items_return_qty_positive", sql`${table.returnQty} > 0`)],
+  (table) => [
+    index("return_transaction_items_borrow_request_item_id_idx").on(table.borrowRequestItemId),
+    check("return_transaction_items_return_qty_positive", sql`${table.returnQty} > 0`),
+  ],
 );

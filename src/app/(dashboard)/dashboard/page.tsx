@@ -10,6 +10,17 @@ import { getCurrentActorFromServer } from "@/lib/server-auth";
 import { createAssetStack } from "@/modules/assets/createAssetStack";
 import { createBorrowStack } from "@/modules/borrow/createBorrowStack";
 import { createUserManagementStack } from "@/modules/users/createUserManagementStack";
+import type { BorrowRequestStatus } from "@/types/borrow-requests";
+
+const ACTIVE_REQUEST_STATUSES: BorrowRequestStatus[] = [
+  "approved",
+  "partially_approved",
+  "partially_returned",
+];
+
+function sumRequestCounts(counts: Record<BorrowRequestStatus, number>) {
+  return Object.values(counts).reduce((sum, count) => sum + count, 0);
+}
 
 export default async function DashboardPage() {
   const actor = await getCurrentActorFromServer();
@@ -26,30 +37,38 @@ export default async function DashboardPage() {
   const isAdmin = actor.role === "admin";
   const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin";
 
-  const [requests, assets, users] = await Promise.all([
-    borrowRequestService.listBorrowRequests(actor, {}),
+  const [
+    requestStatusCounts,
+    recentRequests,
+    borrowerActiveRequests,
+    pendingRequests,
+    activeBorrowRequests,
+    assetSummary,
+    userSummary,
+  ] = await Promise.all([
+    borrowRequestService.getBorrowRequestStatusCounts(actor, {}),
+    isBorrower
+      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 5)
+      : Promise.resolve([]),
+    isBorrower
+      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 5, ACTIVE_REQUEST_STATUSES)
+      : Promise.resolve([]),
     isStaffOrAdmin
-      ? assetService.listAssets({ search: "", category: "", location: "" })
+      ? borrowRequestService.listBorrowRequestSummaries(actor, { status: "pending" }, 5)
       : Promise.resolve([]),
-    isAdmin
-      ? userManagementService.listUsers(actor, { search: "", isActive: undefined })
+    isStaffOrAdmin
+      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 8, ACTIVE_REQUEST_STATUSES)
       : Promise.resolve([]),
+    isStaffOrAdmin ? assetService.getDashboardSummary() : Promise.resolve(null),
+    isAdmin ? userManagementService.getUserSummary(actor) : Promise.resolve(null),
   ]);
 
-  const myActiveBorrows = requests.filter(
-    (request) =>
-      request.status === "approved" ||
-      request.status === "partially_approved" ||
-      request.status === "partially_returned",
-  );
-  const pendingRequests = requests.filter((request) => request.status === "pending");
-  const activeBorrows = requests.filter(
-    (request) =>
-      request.status === "approved" ||
-      request.status === "partially_approved" ||
-      request.status === "partially_returned",
-  );
-  const latestRequestStatus = requests[0]?.status ?? "-";
+  const totalRequests = sumRequestCounts(requestStatusCounts);
+  const activeBorrowCount =
+    requestStatusCounts.approved +
+    requestStatusCounts.partially_approved +
+    requestStatusCounts.partially_returned;
+  const latestRequestStatus = recentRequests[0]?.status ?? "-";
 
   return (
     <div className="space-y-6">
@@ -60,10 +79,10 @@ export default async function DashboardPage() {
 
       {isBorrower ? (
         <section className="grid gap-3 md:grid-cols-3">
-          <DashboardMetricCard label="Total requests" value={requests.length} />
+          <DashboardMetricCard label="Total requests" value={totalRequests} />
           <DashboardMetricCard
             label="Currently borrowed"
-            value={myActiveBorrows.length}
+            value={activeBorrowCount}
             tone="sky"
           />
           <DashboardMetricCard
@@ -74,26 +93,30 @@ export default async function DashboardPage() {
         </section>
       ) : (
         <section className="grid gap-3 md:grid-cols-3">
-          <DashboardMetricCard label="Total assets" value={assets.length} />
-          <DashboardMetricCard label="Pending requests" value={pendingRequests.length} tone="amber" />
-          <DashboardMetricCard label="Active borrows" value={activeBorrows.length} tone="sky" />
+          <DashboardMetricCard label="Total assets" value={assetSummary?.totalAssets ?? 0} />
+          <DashboardMetricCard
+            label="Pending requests"
+            value={requestStatusCounts.pending}
+            tone="amber"
+          />
+          <DashboardMetricCard label="Active borrows" value={activeBorrowCount} tone="sky" />
         </section>
       )}
 
-      <DashboardRequestStatusChart requests={requests} />
+      <DashboardRequestStatusChart counts={requestStatusCounts} />
 
       {isBorrower ? (
         <div className="grid gap-6 xl:grid-cols-2">
           <DashboardRequestTable
             title="Recent requests"
             description="Your latest borrow requests and their current status."
-            requests={requests.slice(0, 5)}
+            requests={recentRequests}
             emptyLabel="No borrow requests found."
           />
           <DashboardRequestTable
             title="Items currently borrowed"
             description="Approved requests that are still waiting for full return."
-            requests={myActiveBorrows}
+            requests={borrowerActiveRequests}
             emptyLabel="No active borrow records."
           />
         </div>
@@ -102,13 +125,13 @@ export default async function DashboardPage() {
           <DashboardRequestTable
             title="Pending review"
             description="Latest requests that are waiting for approval."
-            requests={pendingRequests.slice(0, 5)}
+            requests={pendingRequests}
             emptyLabel="No pending requests."
             actionHref="/borrow-requests"
             actionLabel="View all"
             returnTo="/dashboard"
           />
-          <DashboardAssetStatsPanel assets={assets} />
+          {assetSummary ? <DashboardAssetStatsPanel summary={assetSummary} /> : null}
         </div>
       )}
 
@@ -116,12 +139,12 @@ export default async function DashboardPage() {
         <DashboardRequestTable
           title="Active borrow records"
           description="Requests that are approved and still in progress."
-          requests={activeBorrows.slice(0, 8)}
+          requests={activeBorrowRequests}
           emptyLabel="No active borrow records."
         />
       ) : null}
 
-      {isAdmin ? <DashboardUserStatsPanel users={users} /> : null}
+      {isAdmin && userSummary ? <DashboardUserStatsPanel summary={userSummary} /> : null}
 
       <DashboardPageFooter />
     </div>
