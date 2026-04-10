@@ -152,13 +152,25 @@ export class BorrowRequestService {
   ) {
     this.borrowRequestPolicy.assertCanApprove(actor);
 
-    const request = await this.getRequestOrThrow(id);
-    const approvedItems = resolveApprovedItems(request, input);
-    const nextStatus = resolveApprovalStatus(approvedItems);
-
-    this.assertRequestTransition(request.status, nextStatus);
-
     const updated = await withTransactionContext(async (ctx) => {
+      const request = await ctx.borrowRequestRepo.findByIdForUpdate(id);
+
+      if (!request) {
+        throw new NotFoundError("Borrow request not found", { borrowRequestId: id });
+      }
+
+      if (request.status !== "pending") {
+        throw new ConflictError("Borrow request is no longer pending", {
+          borrowRequestId: id,
+          status: request.status,
+        });
+      }
+
+      const approvedItems = resolveApprovedItems(request, input);
+      const nextStatus = resolveApprovalStatus(approvedItems);
+
+      this.assertRequestTransition(request.status, nextStatus);
+
       for (const item of approvedItems) {
         if (item.approvedQty === 0) {
           continue;

@@ -182,6 +182,22 @@ export class BorrowRequestRepository {
     return result ?? null;
   }
 
+  async findByIdForUpdate(id: number): Promise<BorrowRequestDetail | null> {
+    const [request] = await this.db
+      .select()
+      .from(borrowRequests)
+      .where(eq(borrowRequests.id, id))
+      .limit(1)
+      .for("update");
+
+    if (!request) {
+      return null;
+    }
+
+    const [result] = await this.attachRelations([request]);
+    return result ?? null;
+  }
+
   async findManyByIds(ids: number[]): Promise<BorrowRequestDetail[]> {
     const uniqueIds = Array.from(new Set(ids));
 
