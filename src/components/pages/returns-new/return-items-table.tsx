@@ -1,4 +1,5 @@
 import { StatusBadge } from "@/components/shared/status-badge";
+import { useI18n } from "@/components/providers/i18n-provider";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,42 +29,42 @@ export function ReturnItemsTable({
   hasSelection,
   onItemChange,
 }: ReturnItemsTableProps) {
+  const { t } = useI18n();
+
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Outstanding items</h2>
-        <p className="text-sm text-muted-foreground">
-          Supports partial returns by selecting only the items being returned in this step.
-        </p>
+        <h2 className="text-lg font-semibold">{t("returnsNew.items.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("returnsNew.items.description")}</p>
       </div>
 
       <div className="table-shell shadow-none">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-16">Select</TableHead>
-              <TableHead>Asset</TableHead>
-              <TableHead className="text-center">Approved</TableHead>
-              <TableHead className="text-center">Returned</TableHead>
-              <TableHead className="text-center">Remaining</TableHead>
-              <TableHead className="w-28">This return</TableHead>
-              <TableHead className="w-40">Condition</TableHead>
-              <TableHead>Note</TableHead>
+              <TableHead className="w-16">{t("returnsNew.labels.select")}</TableHead>
+              <TableHead>{t("returnsNew.labels.asset")}</TableHead>
+              <TableHead className="text-center">{t("returnsNew.labels.approved")}</TableHead>
+              <TableHead className="text-center">{t("returnsNew.labels.returned")}</TableHead>
+              <TableHead className="text-center">{t("returnsNew.labels.remaining")}</TableHead>
+              <TableHead className="w-28">{t("returnsNew.labels.thisReturn")}</TableHead>
+              <TableHead className="w-40">{t("returnsNew.labels.condition")}</TableHead>
+              <TableHead>{t("returnsNew.labels.itemNote")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                  Loading returnable items...
+                  {t("returnsNew.items.loading")}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
                   {hasSelection
-                    ? "This request has no remaining items to return."
-                    : "Choose a borrow request to view returnable items."}
+                    ? t("returnsNew.items.emptySelected")
+                    : t("returnsNew.items.emptyUnselected")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -126,17 +127,17 @@ export function ReturnItemsTable({
                         {
                           value: "good",
                           label: <StatusBadge type="condition" value="good" />,
-                          searchLabel: "Good",
+                          searchLabel: t("common.statuses.condition.good"),
                         },
                         {
                           value: "damaged",
                           label: <StatusBadge type="condition" value="damaged" />,
-                          searchLabel: "Damaged",
+                          searchLabel: t("common.statuses.condition.damaged"),
                         },
                         {
                           value: "lost",
                           label: <StatusBadge type="condition" value="lost" />,
-                          searchLabel: "Lost",
+                          searchLabel: t("common.statuses.condition.lost"),
                         },
                       ]}
                     />
@@ -152,7 +153,7 @@ export function ReturnItemsTable({
                           note: event.target.value,
                         }))
                       }
-                      placeholder="Optional note for this item"
+                      placeholder={t("returnsNew.placeholders.itemNote")}
                     />
                   </TableCell>
                 </TableRow>

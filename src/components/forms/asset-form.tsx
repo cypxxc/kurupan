@@ -10,6 +10,7 @@ import {
   AssetImagePicker,
   type AssetImageDraft,
 } from "@/components/forms/asset-image-picker";
+import { useI18n } from "@/components/providers/i18n-provider";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
@@ -17,6 +18,7 @@ import { CreatableCombobox } from "@/components/ui/creatable-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { apiClient, ApiClientError } from "@/lib/api-client";
 import {
   ASSET_IMAGE_ACCEPTED_MIME_TYPES,
   ASSET_IMAGE_MAX_COUNT,
@@ -163,6 +165,7 @@ function normalizeErrorMessage(message: string | undefined, fallback: string) {
 }
 
 export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
+  const { t } = useI18n();
   const router = useRouter();
   const [values, setValues] = useState(initialValues);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AssetFieldKey, string>>>({});
@@ -193,43 +196,34 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
 
   useEffect(() => {
     void Promise.all([
-      fetch("/api/assets/field-options").then((res) => res.json()),
-      fetch("/api/asset-code-series").then((res) => res.json()),
+      apiClient.get<{ categories: string[]; locations: string[] }>("/api/assets/field-options"),
+      apiClient.get<AssetCodeSeries[]>("/api/asset-code-series"),
     ])
       .then(
-        ([
-          fieldOptionsResult,
-          seriesResult,
-        ]: [
-          { success: boolean; data?: { categories: string[]; locations: string[] } },
-          { success: boolean; data?: AssetCodeSeries[] },
-        ]) => {
-          if (fieldOptionsResult.success && fieldOptionsResult.data) {
-            setFieldOptions(fieldOptionsResult.data);
-          }
-
-          if (seriesResult.success && seriesResult.data) {
-            setSeriesOptions(seriesResult.data);
-          }
+        ([fieldOptionsResult, seriesResult]) => {
+          setFieldOptions(fieldOptionsResult);
+          setSeriesOptions(seriesResult);
         },
       )
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        toast.error(t("errors.codes.internalServerError"));
+      });
+  }, [t]);
 
   const stockSummary = useMemo(() => {
     if (!asset) {
       const nextTotalQty = Number(values.totalQty || 0);
       return {
         availableQty: nextTotalQty,
-        hint: "For new records, available quantity starts equal to total quantity.",
+        hint: t("assetForm.stockHintCreate"),
       };
     }
 
     return {
       availableQty: asset.availableQty,
-      hint: "Available quantity is controlled by borrow and return workflows, not by this form.",
+      hint: t("assetForm.stockHintEdit"),
     };
-  }, [asset, values.totalQty]);
+  }, [asset, t, values.totalQty]);
 
   const normalizedName = useMemo(() => normalizeAssetName(values.name), [values.name]);
   const nameWordCount = useMemo(() => getWordCount(values.name), [values.name]);
@@ -255,14 +249,18 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
 
   const seriesComboboxOptions = useMemo(
     () => [
-      { value: "", label: "Manual asset code", searchLabel: "Manual asset code" },
+      {
+        value: "",
+        label: t("assetForm.seriesManual"),
+        searchLabel: t("assetForm.seriesManual"),
+      },
       ...seriesOptions.map((series) => ({
         value: String(series.id),
         label: `${series.name} (${series.prefix})`,
         searchLabel: `${series.name} ${series.prefix}`,
       })),
     ],
-    [seriesOptions],
+    [seriesOptions, t],
   );
 
   const clearFieldError = (field: AssetFieldKey) => {
@@ -342,37 +340,36 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
     }
 
     try {
-      const response = await fetch(`/api/asset-code-series/${seriesId}/preview-code`);
-      const result = (await response.json()) as
-        | { success: true; data: string }
-        | { success: false; error?: { message?: string; details?: unknown } };
-
-      if (!result.success) {
-        const issueFields = getValidationIssueFieldKeys(result.error?.details);
-
-        if (issueFields.length > 0) {
-          showFieldErrors(issueFields);
-          toast.error("Please correct the highlighted red fields before saving.");
-          return;
-        }
-
-        toast.error(
-          normalizeErrorMessage(
-            result.error?.message,
-            "Please correct the highlighted red fields before saving.",
-          ),
-        );
-        return;
-      }
+      const nextCode = await apiClient.get<string>(
+        `/api/asset-code-series/${seriesId}/preview-code`,
+      );
 
       clearFieldError("assetCode");
       setValues((current) => ({
         ...current,
         seriesId,
-        assetCode: result.data,
+        assetCode: nextCode,
       }));
-    } catch {
-      toast.error("Unable to preview the next asset code.");
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        const issueFields = getValidationIssueFieldKeys(error.details);
+
+        if (issueFields.length > 0) {
+          showFieldErrors(issueFields);
+          toast.error(t("assetForm.validationFix"));
+          return;
+        }
+
+        toast.error(
+          normalizeErrorMessage(
+            error.message,
+            t("assetForm.validationFix"),
+          ),
+        );
+        return;
+      }
+
+      toast.error(t("assetForm.previewCodeError"));
     }
   };
 
@@ -383,7 +380,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
 
     const remainingSlots = ASSET_IMAGE_MAX_COUNT - imageDrafts.length;
     if (remainingSlots <= 0) {
-      toast.error(`You can upload at most ${ASSET_IMAGE_MAX_COUNT} images.`);
+      toast.error(t("assetForm.uploadTooMany", { count: ASSET_IMAGE_MAX_COUNT }));
       return;
     }
 
@@ -395,12 +392,12 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
           file.type as (typeof ASSET_IMAGE_ACCEPTED_MIME_TYPES)[number],
         )
       ) {
-        toast.error(`${file.name} is not a supported image format.`);
+        toast.error(t("assetForm.unsupportedImageFormat", { fileName: file.name }));
         continue;
       }
 
       if (file.size > ASSET_IMAGE_MAX_SIZE_BYTES) {
-        toast.error(`${file.name} is larger than 5 MB.`);
+        toast.error(t("assetForm.imageTooLarge", { fileName: file.name }));
         continue;
       }
 
@@ -413,7 +410,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
     }
 
     if (files.length > remainingSlots) {
-      toast.error(`Only ${remainingSlots} more image slot(s) are available.`);
+      toast.error(t("assetForm.remainingSlots", { count: remainingSlots }));
     }
 
     if (nextDrafts.length === 0) {
@@ -445,14 +442,19 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
 
       if (missingFields.length > 0) {
         showFieldErrors(missingFields);
-        toast.error("Please fill the highlighted red fields before creating the asset.");
+        toast.error(t("assetForm.createMissingFields"));
         return;
       }
     }
 
     if (imageDrafts.length < ASSET_IMAGE_MIN_COUNT || imageDrafts.length > ASSET_IMAGE_MAX_COUNT) {
       showFieldErrors(["images"]);
-      toast.error(`Please keep ${ASSET_IMAGE_MIN_COUNT}-${ASSET_IMAGE_MAX_COUNT} images on the asset.`);
+      toast.error(
+        t("assetForm.imageCountRange", {
+          min: ASSET_IMAGE_MIN_COUNT,
+          max: ASSET_IMAGE_MAX_COUNT,
+        }),
+      );
       return;
     }
 
@@ -489,29 +491,27 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
     }
 
     try {
-      const response = await fetch(
+      const data = await apiClient[mode === "create" ? "post" : "patch"]<Asset>(
         mode === "create" ? "/api/assets" : `/api/assets/${asset?.id}`,
         {
-          method: mode === "create" ? "POST" : "PATCH",
           body: formData,
         },
       );
-
-      const result = (await response.json()) as
-        | { success: true; data: Asset }
-        | { success: false; error?: { message?: string; details?: unknown } };
-
-      if (!result.success) {
-        const issueFields = getValidationIssueFieldKeys(result.error?.details);
+      toast.success(mode === "create" ? t("assetForm.created") : t("assetForm.updated"));
+      router.push(`/assets/${data.id}`);
+      router.refresh();
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        const issueFields = getValidationIssueFieldKeys(error.details);
 
         if (issueFields.length > 0) {
           showFieldErrors(issueFields);
-          toast.error("Please correct the highlighted red fields before saving.");
+          toast.error(t("assetForm.validationFix"));
         } else {
           toast.error(
             normalizeErrorMessage(
-              result.error?.message,
-              "Please correct the highlighted red fields before saving.",
+              error.message,
+              t("assetForm.validationFix"),
             ),
           );
         }
@@ -519,11 +519,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
         return;
       }
 
-      toast.success(mode === "create" ? "Asset created." : "Asset updated.");
-      router.push(`/assets/${result.data.id}`);
-      router.refresh();
-    } catch {
-      toast.error("An unexpected error occurred while saving the asset.");
+      toast.error(t("assetForm.saveError"));
     } finally {
       setSubmitting(false);
     }
@@ -534,31 +530,29 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
       <form onSubmit={handleSubmit} className="surface-panel surface-section">
         <div className="flex flex-col gap-2 border-b pb-5">
           <h1 className="text-2xl font-semibold">
-            {mode === "create" ? "Create asset" : "Edit asset"}
+            {mode === "create" ? t("assetForm.title.create") : t("assetForm.title.edit")}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Keep the record readable, standardized, and consistent across the system.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("assetForm.description")}</p>
         </div>
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="seriesId">Asset code series</Label>
+            <Label htmlFor="seriesId">{t("assetForm.labels.seriesId")}</Label>
             <Combobox
               id="seriesId"
               value={values.seriesId}
               onChange={(value) => void handleSeriesChange(value)}
               options={seriesComboboxOptions}
               ariaInvalid={Boolean(fieldErrors.seriesId)}
-              placeholder="Select a code series or type manually"
+              placeholder={t("assetForm.placeholders.seriesId")}
             />
             <p className="text-xs text-muted-foreground">
-              Selecting a series previews the next code. The final code is reserved when saving.
+              {t("assetForm.help.seriesId")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="assetCode">Asset code</Label>
+            <Label htmlFor="assetCode">{t("assetForm.labels.assetCode")}</Label>
             <Input
               id="assetCode"
               value={values.assetCode}
@@ -567,19 +561,23 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
               required
               disabled={isAssetCodeLocked}
               maxLength={ASSET_CODE_MAX_LENGTH}
-              placeholder={isAssetCodeLocked ? "Generated from selected series" : "NB-1001"}
+              placeholder={
+                isAssetCodeLocked
+                  ? t("assetForm.placeholders.assetCodeGenerated")
+                  : t("assetForm.placeholders.assetCodeManual")
+              }
               aria-invalid={fieldErrors.assetCode ? "true" : undefined}
               className={fieldErrors.assetCode ? "field-error-blink" : undefined}
             />
             <p className="text-xs text-muted-foreground">
               {isAssetCodeLocked
-                ? "This code is generated from the selected series. Switch back to manual to type it yourself."
-                : "Use a short fixed code. Uppercase letters, numbers, and hyphens work best."}
+                ? t("assetForm.help.assetCodeGenerated")
+                : t("assetForm.help.assetCodeManual")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="name">Asset name</Label>
+            <Label htmlFor="name">{t("assetForm.labels.name")}</Label>
             <Input
               id="name"
               value={values.name}
@@ -587,14 +585,16 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
               onBlur={(event) => handleChange("name", normalizeAssetName(event.target.value))}
               required
               maxLength={ASSET_NAME_MAX_LENGTH}
-              placeholder="Notebook Dell Latitude 5440"
+              placeholder={t("assetForm.placeholders.name")}
               aria-invalid={fieldErrors.name ? "true" : undefined}
               className={fieldErrors.name ? "field-error-blink" : undefined}
             />
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
               <p>
-                Recommended: no more than {ASSET_NAME_MAX_WORDS} words and {ASSET_NAME_MAX_LENGTH}{" "}
-                characters.
+                {t("assetForm.help.nameRecommended", {
+                  words: ASSET_NAME_MAX_WORDS,
+                  characters: ASSET_NAME_MAX_LENGTH,
+                })}
               </p>
               <span
                 className={
@@ -609,54 +609,54 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
             <div className="rounded-sm border border-border/80 bg-muted/25 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium tracking-wide text-muted-foreground">
-                  Detail title preview
+                  {t("assetForm.help.detailTitlePreview")}
                 </p>
-                <span className="text-xs text-muted-foreground">2 lines max</span>
+                <span className="text-xs text-muted-foreground">{t("assetForm.help.twoLinesMax")}</span>
               </div>
               <div
-                title={normalizedName || "Asset name preview"}
+                title={normalizedName || t("assetForm.placeholders.namePreviewTitle")}
                 className={
                   normalizedName
                     ? "asset-title-clamp mt-3 text-lg font-semibold leading-tight text-foreground"
                     : "mt-3 text-sm text-muted-foreground"
                 }
               >
-                {normalizedName || "Asset name preview will appear here as users will see it on the detail page."}
+                {normalizedName || t("assetForm.placeholders.namePreviewEmpty")}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Long names are clamped after the second line on the asset detail page.
+                {t("assetForm.help.longNamesClamp")}
               </p>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category">{t("assetForm.labels.category")}</Label>
             <CreatableCombobox
               id="category"
               options={fieldOptions.categories}
               value={values.category}
               onChange={(value) => handleChange("category", value)}
               maxLength={100}
-              placeholder="Notebook, Projector, Camera"
+              placeholder={t("assetForm.placeholders.category")}
               ariaInvalid={Boolean(fieldErrors.category)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
+            <Label htmlFor="location">{t("assetForm.labels.location")}</Label>
             <CreatableCombobox
               id="location"
               options={fieldOptions.locations}
               value={values.location}
               onChange={(value) => handleChange("location", value)}
               maxLength={255}
-              placeholder="IT Store"
+              placeholder={t("assetForm.placeholders.location")}
               ariaInvalid={Boolean(fieldErrors.location)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="totalQty">Total quantity</Label>
+            <Label htmlFor="totalQty">{t("assetForm.labels.totalQty")}</Label>
             <Input
               id="totalQty"
               type="number"
@@ -668,12 +668,14 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
               className={fieldErrors.totalQty ? "field-error-blink" : undefined}
             />
             <p className="text-xs text-muted-foreground">
-              Standard display format: {formatAssetQuantity(totalQty)}
+              {t("assetForm.help.quantityFormat", {
+                value: formatAssetQuantity(totalQty),
+              })}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
+            <Label htmlFor="status">{t("assetForm.labels.status")}</Label>
             <Combobox
               id="status"
               value={values.status}
@@ -684,33 +686,33 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
                 {
                   value: "available",
                   label: <StatusBadge type="asset" value="available" />,
-                  searchLabel: "Available",
+                  searchLabel: t("common.statuses.asset.available"),
                 },
                 {
                   value: "maintenance",
                   label: <StatusBadge type="asset" value="maintenance" />,
-                  searchLabel: "Maintenance",
+                  searchLabel: t("common.statuses.asset.maintenance"),
                 },
                 {
                   value: "retired",
                   label: <StatusBadge type="asset" value="retired" />,
-                  searchLabel: "Retired",
+                  searchLabel: t("common.statuses.asset.retired"),
                 },
               ]}
               ariaInvalid={Boolean(fieldErrors.status)}
-              placeholder="Select status"
+              placeholder={t("assetForm.placeholders.status")}
             />
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("assetForm.labels.description")}</Label>
             <Textarea
               id="description"
               rows={5}
               value={values.description}
               onChange={(event) => handleChange("description", event.target.value)}
               maxLength={2000}
-              placeholder="Add model, accessory notes, or handling instructions if needed."
+              placeholder={t("assetForm.placeholders.description")}
               aria-invalid={fieldErrors.description ? "true" : undefined}
               className={fieldErrors.description ? "field-error-blink" : undefined}
             />
@@ -731,9 +733,9 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
             className="flex w-full items-center justify-between gap-3 text-left"
           >
             <div>
-              <p className="font-medium">Financial information</p>
+              <p className="font-medium">{t("assetForm.labels.financialInfo")}</p>
               <p className="text-sm text-muted-foreground">
-                Purchase price, purchase date, useful life, and residual value.
+                {t("assetForm.help.financialInfo")}
               </p>
             </div>
             {showFinancialSection ? (
@@ -746,7 +748,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
           {showFinancialSection ? (
             <div className="mt-5 grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="purchasePrice">Purchase price</Label>
+                <Label htmlFor="purchasePrice">{t("assetForm.labels.purchasePrice")}</Label>
                 <Input
                   id="purchasePrice"
                   type="number"
@@ -754,14 +756,14 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
                   step="0.01"
                   value={values.purchasePrice}
                   onChange={(event) => handleChange("purchasePrice", event.target.value)}
-                  placeholder="100000"
+                  placeholder={t("assetForm.placeholders.purchasePrice")}
                   aria-invalid={fieldErrors.purchasePrice ? "true" : undefined}
                   className={fieldErrors.purchasePrice ? "field-error-blink" : undefined}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="purchaseDate">Purchase date</Label>
+                <Label htmlFor="purchaseDate">{t("assetForm.labels.purchaseDate")}</Label>
                 <Input
                   id="purchaseDate"
                   type="date"
@@ -773,7 +775,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="usefulLifeYears">Useful life (years)</Label>
+                <Label htmlFor="usefulLifeYears">{t("assetForm.labels.usefulLifeYears")}</Label>
                 <Input
                   id="usefulLifeYears"
                   type="number"
@@ -781,14 +783,14 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
                   step="1"
                   value={values.usefulLifeYears}
                   onChange={(event) => handleChange("usefulLifeYears", event.target.value)}
-                  placeholder="5"
+                  placeholder={t("assetForm.placeholders.usefulLifeYears")}
                   aria-invalid={fieldErrors.usefulLifeYears ? "true" : undefined}
                   className={fieldErrors.usefulLifeYears ? "field-error-blink" : undefined}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="residualValue">Residual value</Label>
+                <Label htmlFor="residualValue">{t("assetForm.labels.residualValue")}</Label>
                 <Input
                   id="residualValue"
                   type="number"
@@ -796,7 +798,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
                   step="0.01"
                   value={values.residualValue}
                   onChange={(event) => handleChange("residualValue", event.target.value)}
-                  placeholder="1"
+                  placeholder={t("assetForm.placeholders.residualValue")}
                   aria-invalid={fieldErrors.residualValue ? "true" : undefined}
                   className={fieldErrors.residualValue ? "field-error-blink" : undefined}
                 />
@@ -804,7 +806,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
 
               <div className="rounded-2xl border border-border/80 bg-background px-4 py-4 md:col-span-2">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Annual depreciation (estimate)
+                  {t("assetForm.labels.annualDepreciation")}
                 </p>
                 <p className="mt-2 text-2xl font-semibold">
                   {annualDepreciationPreview
@@ -821,7 +823,7 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
             href={asset ? `/assets/${asset.id}` : "/assets"}
             className={buttonVariants({ variant: "outline" })}
           >
-            Cancel
+            {t("assetForm.actions.cancel")}
           </Link>
           <Button type="submit" disabled={submitting} className="gap-2">
             {submitting ? (
@@ -829,14 +831,14 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
             ) : (
               <Save className="size-4" />
             )}
-            {submitting ? "Saving..." : "Save asset"}
+            {submitting ? t("assetForm.actions.saving") : t("assetForm.actions.save")}
           </Button>
         </div>
       </form>
 
       <aside className="space-y-4">
         <div className="surface-panel surface-section">
-          <p className="text-sm font-medium text-muted-foreground">Current status</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("assetForm.labels.currentStatus")}</p>
           <div className="mt-3">
             <StatusBadge type="asset" value={values.status} />
           </div>
@@ -844,16 +846,16 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
         </div>
 
         <div className="surface-panel surface-section">
-          <p className="text-sm font-medium text-muted-foreground">Quantity summary</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("assetForm.labels.quantitySummary")}</p>
           <div className="mt-4 grid gap-3">
             <div className="rounded-sm border border-border/80 bg-muted/55 px-4 py-3">
-              <p className="text-xs text-muted-foreground">Available</p>
+              <p className="text-xs text-muted-foreground">{t("assetForm.labels.available")}</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">
                 {formatAssetQuantity(stockSummary.availableQty)}
               </p>
             </div>
             <div className="rounded-sm border border-border/80 bg-muted/55 px-4 py-3">
-              <p className="text-xs text-muted-foreground">Total after save</p>
+              <p className="text-xs text-muted-foreground">{t("assetForm.labels.totalAfterSave")}</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">
                 {formatAssetQuantity(totalQty)}
               </p>
@@ -862,14 +864,14 @@ export function AssetForm({ mode, asset, initialValues }: AssetFormProps) {
         </div>
 
         <div className="surface-panel surface-section">
-          <p className="text-sm font-medium text-muted-foreground">Financial preview</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("assetForm.labels.financialPreview")}</p>
           <p className="mt-3 text-2xl font-semibold">
             {annualDepreciationPreview
               ? `${BAHT_FORMATTER.format(Number(annualDepreciationPreview))} THB/year`
               : "-"}
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Straight-line depreciation preview from the financial inputs above.
+            {t("assetForm.help.saveAvailableHint")}
           </p>
         </div>
       </aside>

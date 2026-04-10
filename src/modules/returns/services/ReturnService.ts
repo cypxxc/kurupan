@@ -92,7 +92,9 @@ export class ReturnService {
         const asset =
           item.condition === "lost"
             ? await ctx.assetRepo.decrementTotalQty(requestItem.assetId, item.returnQty)
-            : await ctx.assetRepo.incrementAvailableQty(requestItem.assetId, item.returnQty);
+            : item.condition === "damaged"
+              ? await ctx.assetRepo.updateStatus(requestItem.assetId, "maintenance")
+              : await ctx.assetRepo.incrementAvailableQty(requestItem.assetId, item.returnQty);
 
         if (!asset) {
           throw new NotFoundError("ไม่พบครุภัณฑ์ระหว่างบันทึกการคืน", {

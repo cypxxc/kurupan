@@ -1,6 +1,7 @@
 import { successResponse } from "@/lib/http/response";
 import { requireCurrentActor } from "@/lib/http/request-context";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { logger } from "@/lib/logger";
 import { deleteAssetImageFiles, saveAssetImageFiles } from "@/lib/uploads/asset-images";
 import {
   assetIdParamsSchema,
@@ -53,10 +54,30 @@ export const PATCH = withErrorHandler(
         newImages: storedImages,
       });
 
-      await deleteAssetImageFiles(result.removedImages.map((image) => image.storageKey));
+      const cleanupResult = await deleteAssetImageFiles(
+        result.removedImages.map((image) => image.storageKey),
+      );
+
+      if (cleanupResult.failedStorageKeys.length > 0) {
+        logger.warn("Failed to delete replaced asset image files after asset update", {
+          assetId: id,
+          failedStorageKeys: cleanupResult.failedStorageKeys,
+        });
+      }
+
       return successResponse(result.asset);
     } catch (error) {
-      await deleteAssetImageFiles(storedImages.map((image) => image.storageKey));
+      const cleanupResult = await deleteAssetImageFiles(
+        storedImages.map((image) => image.storageKey),
+      );
+
+      if (cleanupResult.failedStorageKeys.length > 0) {
+        logger.warn("Failed to clean up uploaded asset image files after update error", {
+          assetId: id,
+          failedStorageKeys: cleanupResult.failedStorageKeys,
+        });
+      }
+
       throw error;
     }
   },
@@ -72,7 +93,16 @@ export const DELETE = withErrorHandler(
     const { assetService } = createAssetStack();
     const result = await assetService.deleteAsset(actor, id);
 
-    await deleteAssetImageFiles(result.removedImages.map((image) => image.storageKey));
+    const cleanupResult = await deleteAssetImageFiles(
+      result.removedImages.map((image) => image.storageKey),
+    );
+
+    if (cleanupResult.failedStorageKeys.length > 0) {
+      logger.warn("Failed to delete asset image files after asset deletion", {
+        assetId: id,
+        failedStorageKeys: cleanupResult.failedStorageKeys,
+      });
+    }
 
     return successResponse({
       id: result.deletedAsset.id,

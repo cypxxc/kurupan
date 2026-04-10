@@ -1,5 +1,7 @@
 import { PackagePlus, Search } from "lucide-react";
 
+import { useI18n } from "@/components/providers/i18n-provider";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,7 +19,12 @@ type BorrowAssetPickerProps = {
   searchTerm: string;
   loading: boolean;
   assets: BorrowableAsset[];
+  page: number;
+  total: number;
+  totalPages: number;
+  limit: number;
   onSearchTermChange: (value: string) => void;
+  onPageChange: (page: number) => void;
   onSelect: (asset: BorrowableAsset) => void;
 };
 
@@ -25,14 +32,23 @@ export function BorrowAssetPicker({
   searchTerm,
   loading,
   assets,
+  page,
+  total,
+  totalPages,
+  limit,
   onSearchTermChange,
+  onPageChange,
   onSelect,
 }: BorrowAssetPickerProps) {
+  const { t } = useI18n();
+  const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = total === 0 ? 0 : Math.min(page * limit, total);
+
   return (
     <div className="surface-panel surface-section">
       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <PackagePlus className="size-4" />
-        Asset picker
+        {t("borrowRequestNew.labels.assetPicker")}
       </div>
       <div className="mt-4 space-y-3">
         <div className="relative">
@@ -40,7 +56,7 @@ export function BorrowAssetPicker({
           <Input
             value={searchTerm}
             onChange={(event) => onSearchTermChange(event.target.value)}
-            placeholder="Search by name, code, category, or location"
+            placeholder={t("borrowRequestNew.placeholders.search")}
             className="pl-9"
           />
         </div>
@@ -49,8 +65,10 @@ export function BorrowAssetPicker({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Asset</TableHead>
-                <TableHead className="text-center">Available</TableHead>
+                <TableHead>{t("borrowRequestNew.labels.asset")}</TableHead>
+                <TableHead className="text-center">
+                  {t("borrowRequestNew.labels.available")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -71,7 +89,7 @@ export function BorrowAssetPicker({
                     colSpan={2}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
-                    No borrowable assets match the current search.
+                    {t("borrowRequestNew.help.assetEmpty")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -87,25 +105,21 @@ export function BorrowAssetPicker({
                     }}
                     role="button"
                     tabIndex={0}
-                    title="Add to request"
+                    title={t("borrowRequestNew.help.addToRequest")}
                     className="cursor-pointer"
                   >
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p
-                            title={asset.name}
-                            className="max-w-[14rem] truncate font-medium"
-                          >
+                          <p title={asset.name} className="max-w-[14rem] truncate font-medium">
                             {asset.name}
                           </p>
                           <StatusBadge type="asset" value={asset.status} />
                         </div>
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {asset.assetCode}
-                        </p>
+                        <p className="font-mono text-xs text-muted-foreground">{asset.assetCode}</p>
                         <p className="text-xs text-muted-foreground">
-                          {asset.category ?? "Uncategorized"} / {asset.location ?? "No location"}
+                          {asset.category ?? t("common.placeholders.uncategorized")} /{" "}
+                          {asset.location ?? t("common.placeholders.unspecifiedLocation")}
                         </p>
                       </div>
                     </TableCell>
@@ -117,6 +131,19 @@ export function BorrowAssetPicker({
               )}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground">
+            {total === 0
+              ? t("borrowRequestNew.help.noAssetsFound")
+              : t("borrowRequestNew.help.pageSummary", {
+                  start: startItem,
+                  end: endItem,
+                  total,
+                })}
+          </p>
+          <PaginationControls page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
       </div>
     </div>

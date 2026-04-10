@@ -7,12 +7,41 @@ export type SessionUser = ActorContext;
 
 export const SESSION_COOKIE_NAME = "session";
 
-function getSessionSecret() {
-  const sessionSecret = process.env.SESSION_SECRET;
+type SessionEnv = Record<string, string | undefined>;
+
+const DEFAULT_SESSION_SECRET_VALUES = new Set([
+  "change-me-to-random-64-char-hex",
+  "replace-with-random-64-character-secret",
+  "changeme",
+  "secret",
+]);
+
+export function validateSessionConfig(env: SessionEnv = process.env as SessionEnv) {
+  const sessionSecret = env.SESSION_SECRET;
 
   if (!sessionSecret) {
     throw new Error("SESSION_SECRET is not set");
   }
+
+  if (
+    DEFAULT_SESSION_SECRET_VALUES.has(sessionSecret) ||
+    sessionSecret.trim().length < 32
+  ) {
+    throw new Error(
+      "SESSION_SECRET must be at least 32 characters and must not use a default placeholder",
+    );
+  }
+
+  const ttlHours = Number(env.SESSION_TTL_HOURS ?? "8");
+
+  if (!Number.isFinite(ttlHours) || ttlHours <= 0) {
+    throw new Error("SESSION_TTL_HOURS must be a positive number");
+  }
+}
+
+function getSessionSecret() {
+  validateSessionConfig();
+  const sessionSecret = process.env.SESSION_SECRET;
 
   return new TextEncoder().encode(sessionSecret);
 }

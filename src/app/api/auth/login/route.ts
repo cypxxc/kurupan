@@ -1,8 +1,9 @@
 import { getServerAuthProviderMode } from "@/lib/auth-provider";
 import { signSessionId, setSessionCookie } from "@/lib/auth";
-import { ValidationError } from "@/lib/errors";
+import { TooManyRequestsError, ValidationError } from "@/lib/errors";
 import { successResponse } from "@/lib/http/response";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { consumeRateLimit, getRequestClientIp } from "@/lib/security/rate-limit";
 import { createAuthStack } from "@/modules/auth/createAuthStack";
 
 export const POST = withErrorHandler(async (request: Request) => {
@@ -14,6 +15,17 @@ export const POST = withErrorHandler(async (request: Request) => {
     username?: string;
     password?: string;
   };
+  const ip = getRequestClientIp(request);
+  const rateLimit = consumeRateLimit(`auth:login:${ip}`, {
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+  });
+
+  if (!rateLimit.allowed) {
+    throw new TooManyRequestsError("Too many login attempts. Please try again later.", {
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+  }
 
   const { authService } = createAuthStack();
   const result = await authService.login(body);

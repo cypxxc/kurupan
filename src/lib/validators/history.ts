@@ -16,6 +16,8 @@ export const historyListQuerySchema = z
     action: z.string().trim().min(1).max(100).optional(),
     dateFrom: dateStringSchema.optional(),
     dateTo: dateStringSchema.optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
   })
   .refine(
     (input) => !input.dateFrom || !input.dateTo || input.dateFrom <= input.dateTo,

@@ -37,11 +37,17 @@ export default async function DashboardPage() {
   ]);
 
   const myActiveBorrows = requests.filter(
-    (request) => request.status === "approved" || request.status === "partially_returned",
+    (request) =>
+      request.status === "approved" ||
+      request.status === "partially_approved" ||
+      request.status === "partially_returned",
   );
   const pendingRequests = requests.filter((request) => request.status === "pending");
   const activeBorrows = requests.filter(
-    (request) => request.status === "approved" || request.status === "partially_returned",
+    (request) =>
+      request.status === "approved" ||
+      request.status === "partially_approved" ||
+      request.status === "partially_returned",
   );
   const latestRequestStatus = requests[0]?.status ?? "-";
 

@@ -1,49 +1,13 @@
+import { sanitizeSensitiveData } from "@/lib/security/sanitize";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
-
-const SENSITIVE_KEYS = new Set([
-  "password",
-  "passwordHash",
-  "password_hash",
-  "session",
-  "sessionId",
-  "session_id",
-  "cookie",
-  "cookies",
-  "secret",
-  "authorization",
-]);
-
-function sanitizeLogValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeLogValue);
-  }
-
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack,
-    };
-  }
-
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).map(([key, entryValue]) => [
-      key,
-      SENSITIVE_KEYS.has(key) ? "[REDACTED]" : sanitizeLogValue(entryValue),
-    ]);
-
-    return Object.fromEntries(entries);
-  }
-
-  return value;
-}
 
 function writeLog(level: LogLevel, message: string, context?: unknown) {
   const payload = {
     level,
     message,
     timestamp: new Date().toISOString(),
-    context: sanitizeLogValue(context),
+    context: sanitizeSensitiveData(context),
   };
 
   const line = JSON.stringify(payload);

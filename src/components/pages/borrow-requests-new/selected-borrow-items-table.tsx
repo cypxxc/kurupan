@@ -1,5 +1,6 @@
 import { Trash2 } from "lucide-react";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,12 +25,14 @@ export function SelectedBorrowItemsTable({
   onQtyChange,
   onRemove,
 }: SelectedBorrowItemsTableProps) {
+  const { t } = useI18n();
+
   if (items.length === 0) {
     return (
       <div className="empty-state px-6 py-12">
-        <p className="font-medium">No assets selected yet</p>
+        <p className="font-medium">{t("borrowRequestNew.help.selectedEmptyTitle")}</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pick items from the asset list on the right to build the request.
+          {t("borrowRequestNew.help.selectedEmptyDescription")}
         </p>
       </div>
     );
@@ -41,11 +44,11 @@ export function SelectedBorrowItemsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Asset</TableHead>
-              <TableHead className="text-center">Available</TableHead>
-              <TableHead className="w-28">Requested</TableHead>
-              <TableHead className="text-right">Remove</TableHead>
+              <TableHead>{t("borrowRequestNew.labels.code")}</TableHead>
+              <TableHead>{t("borrowRequestNew.labels.asset")}</TableHead>
+              <TableHead className="text-center">{t("borrowRequestNew.labels.available")}</TableHead>
+              <TableHead className="w-28">{t("borrowRequestNew.labels.requested")}</TableHead>
+              <TableHead className="text-right">{t("borrowRequestNew.labels.remove")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -58,7 +61,8 @@ export function SelectedBorrowItemsTable({
                   <div className="space-y-1">
                     <p className="font-medium">{item.assetName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {item.category ?? "Uncategorized"} / {item.location ?? "No location"}
+                      {item.category ?? t("common.placeholders.uncategorized")} /{" "}
+                      {item.location ?? t("common.placeholders.unspecifiedLocation")}
                     </p>
                   </div>
                 </TableCell>
@@ -83,7 +87,7 @@ export function SelectedBorrowItemsTable({
                       onClick={() => onRemove(item.assetId)}
                     >
                       <Trash2 className="size-4" />
-                      Remove
+                      {t("borrowRequestNew.actions.remove")}
                     </button>
                   </div>
                 </TableCell>

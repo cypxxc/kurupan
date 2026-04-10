@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
+  index,
   integer,
   numeric,
   pgEnum,
@@ -41,5 +42,8 @@ export const assets = pgTable(
     check("assets_total_qty_non_negative", sql`${table.totalQty} >= 0`),
     check("assets_available_qty_non_negative", sql`${table.availableQty} >= 0`),
     check("assets_available_qty_lte_total_qty", sql`${table.availableQty} <= ${table.totalQty}`),
+    index("assets_status_idx").on(table.status),
+    index("assets_category_idx").on(table.category),
+    index("assets_location_idx").on(table.location),
   ],
 );

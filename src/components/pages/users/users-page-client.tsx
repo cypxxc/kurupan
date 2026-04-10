@@ -10,7 +10,6 @@ import { UsersFilterCard } from "@/components/pages/users/users-filter-card";
 import { buildManagedUserDraftMap } from "@/components/pages/users/users-page-helpers";
 import type {
   ActiveFilter,
-  ApiResult,
   ManagedUserDraftMap,
   RoleFilter,
   UserDraft,
@@ -24,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import type { ManagedUser } from "@/types/users";
 
@@ -69,20 +69,11 @@ export function UsersPageClient() {
         params.set("isActive", activeFilter);
       }
 
-      const response = await fetch(`/api/users?${params.toString()}`);
-      const result = (await response.json()) as ApiResult<ManagedUser[]>;
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to load users.");
-        setUsers([]);
-        setDrafts({});
-        return;
-      }
-
-      setUsers(result.data);
-      setDrafts(buildManagedUserDraftMap(result.data));
-    } catch {
-      toast.error("An error occurred while loading users.");
+      const data = await apiClient.get<ManagedUser[]>("/api/users", { query: params });
+      setUsers(data);
+      setDrafts(buildManagedUserDraftMap(data));
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "An error occurred while loading users."));
       setUsers([]);
       setDrafts({});
     } finally {
@@ -124,38 +115,28 @@ export function UsersPageClient() {
     setSavingUserId(managedUser.externalUserId);
 
     try {
-      const response = await fetch(`/api/users/${managedUser.externalUserId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const data = await apiClient.patch<ManagedUser>(`/api/users/${managedUser.externalUserId}`, {
+        body: {
           role: draft.role,
           isActive: draft.isActive,
-        }),
+        },
       });
-      const result = (await response.json()) as ApiResult<ManagedUser>;
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to update user.");
-        return;
-      }
 
       setUsers((current) =>
         current.map((item) =>
-          item.externalUserId === managedUser.externalUserId ? result.data : item,
+          item.externalUserId === managedUser.externalUserId ? data : item,
         ),
       );
       setDrafts((current) => ({
         ...current,
         [managedUser.externalUserId]: {
-          role: result.data.role,
-          isActive: result.data.isActive,
+          role: data.role,
+          isActive: data.isActive,
         },
       }));
       toast.success("User access updated.");
-    } catch {
-      toast.error("An error occurred while updating the user.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "An error occurred while updating the user."));
     } finally {
       setSavingUserId(null);
     }

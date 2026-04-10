@@ -1,0 +1,2 @@
+ALTER TABLE "notifications" ADD COLUMN "dedupe_key" varchar(255);--> statement-breakpoint
+CREATE UNIQUE INDEX "notifications_recipient_type_dedupe_idx" ON "notifications" USING btree ("recipient_external_user_id","type","dedupe_key");

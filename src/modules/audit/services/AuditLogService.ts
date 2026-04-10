@@ -1,4 +1,6 @@
 import { AuthorizationError } from "@/lib/errors";
+import { sanitizeSensitiveData } from "@/lib/security/sanitize";
+import type { PaginatedResult } from "@/lib/pagination";
 import type { AuditLogListQuery } from "@/lib/validators/history";
 import type { ActorContext } from "@/types/auth";
 import type { AuditLogEntry } from "@/types/history";
@@ -21,8 +23,8 @@ export class AuditLogService {
       action: input.action,
       entityType: input.entityType,
       entityId: String(input.entityId),
-      beforeData: input.beforeData,
-      afterData: input.afterData,
+      beforeData: sanitizeSensitiveData(input.beforeData),
+      afterData: sanitizeSensitiveData(input.afterData),
     });
   }
 
@@ -44,5 +46,31 @@ export class AuditLogService {
       hasBeforeData: row.beforeData !== null,
       hasAfterData: row.afterData !== null,
     }));
+  }
+
+  async listAuditLogPage(
+    actor: ActorContext,
+    filters: AuditLogListQuery,
+  ): Promise<PaginatedResult<AuditLogEntry>> {
+    if (actor.role === "borrower") {
+      throw new AuthorizationError("คุณไม่มีสิทธิ์ดูบันทึกตรวจสอบ");
+    }
+
+    const page = await this.auditLogRepository.findPage(filters);
+
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        createdAt: row.createdAt.toISOString(),
+        actorExternalUserId: row.actorExternalUserId ?? null,
+        actorName: row.actorName ?? null,
+        action: row.action,
+        entityType: row.entityType as AuditLogEntry["entityType"],
+        entityId: row.entityId,
+        hasBeforeData: row.beforeData !== null,
+        hasAfterData: row.afterData !== null,
+      })),
+    };
   }
 }

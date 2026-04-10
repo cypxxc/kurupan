@@ -1,11 +1,12 @@
 import { sql } from "drizzle-orm";
-import { check, date, integer, pgEnum, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { check, date, index, integer, pgEnum, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 import { assets } from "./assets";
 
 export const borrowRequestStatusEnum = pgEnum("borrow_request_status", [
   "pending",
   "approved",
+  "partially_approved",
   "rejected",
   "cancelled",
   "partially_returned",
@@ -33,7 +34,12 @@ export const borrowRequests = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("borrow_requests_due_date_gte_start_date", sql`${table.dueDate} >= ${table.startDate}`)],
+  (table) => [
+    check("borrow_requests_due_date_gte_start_date", sql`${table.dueDate} >= ${table.startDate}`),
+    index("borrow_requests_status_idx").on(table.status),
+    index("borrow_requests_borrower_external_user_id_idx").on(table.borrowerExternalUserId),
+    index("borrow_requests_due_date_idx").on(table.dueDate),
+  ],
 );
 
 export const borrowRequestItems = pgTable(
@@ -53,7 +59,12 @@ export const borrowRequestItems = pgTable(
   },
   (table) => [
     check("borrow_request_items_requested_qty_positive", sql`${table.requestedQty} > 0`),
-    check("borrow_request_items_approved_qty_positive", sql`${table.approvedQty} IS NULL OR ${table.approvedQty} > 0`),
+    check(
+      "borrow_request_items_approved_qty_non_negative",
+      sql`${table.approvedQty} IS NULL OR ${table.approvedQty} >= 0`,
+    ),
     check("borrow_request_items_approved_qty_lte_requested_qty", sql`${table.approvedQty} IS NULL OR ${table.approvedQty} <= ${table.requestedQty}`),
+    index("borrow_request_items_borrow_request_id_idx").on(table.borrowRequestId),
+    index("borrow_request_items_asset_id_idx").on(table.assetId),
   ],
 );

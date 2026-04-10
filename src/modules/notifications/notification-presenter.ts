@@ -66,6 +66,16 @@ function presentBorrowRequestNotification(
         }),
       );
     case "borrow_request_approved":
+      if (request.status === "partially_approved") {
+        return toNotificationItem(
+          record,
+          t("notifications.messages.borrowRequestPartiallyApproved.title"),
+          t("notifications.messages.borrowRequestPartiallyApproved.body", {
+            requestNo: request.requestNo,
+          }),
+        );
+      }
+
       return toNotificationItem(
         record,
         t("notifications.messages.borrowRequestApproved.title"),

@@ -10,10 +10,19 @@ import { AssetDataTable } from "@/components/tables/asset-data-table";
 import { buttonVariants } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/components/providers/i18n-provider";
+import type { PaginatedResult } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/types/assets";
+
+const PAGE_SIZE = 10;
+
+type AssetFieldOptions = {
+  categories: string[];
+  locations: string[];
+};
 
 function withSelectedOption(options: string[], selected: string) {
   if (selected === "all" || options.includes(selected)) {
@@ -23,19 +32,38 @@ function withSelectedOption(options: string[], selected: string) {
   return [selected, ...options];
 }
 
-export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) {
+export function AssetsPageClient({
+  initialPage,
+}: {
+  initialPage: PaginatedResult<Asset>;
+}) {
   const { user } = useAuth();
   const { t } = useI18n();
-  const [assets, setAssets] = useState<Asset[]>(initialAssets);
+  const [assets, setAssets] = useState<Asset[]>(initialPage.items);
+  const [pagination, setPagination] = useState<PaginatedResult<Asset>>(initialPage);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [page, setPage] = useState(initialPage.page);
+  const [fieldOptions, setFieldOptions] = useState<AssetFieldOptions>({
+    categories: [],
+    locations: [],
+  });
   const skipInitialFetch = useRef(true);
+  const filterKeyRef = useRef("");
 
   const canManage = user?.role === "staff" || user?.role === "admin";
+  const filterKey = [
+    debouncedSearch,
+    statusFilter,
+    stockFilter,
+    categoryFilter,
+    locationFilter,
+  ].join(":");
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -55,66 +83,86 @@ export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) 
     if (statusFilter !== "all") {
       params.set("status", statusFilter);
     }
+    if (stockFilter !== "all") {
+      params.set("stock", stockFilter);
+    }
     if (categoryFilter !== "all") {
       params.set("category", categoryFilter);
     }
     if (locationFilter !== "all") {
       params.set("location", locationFilter);
     }
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_SIZE));
 
     try {
-      const response = await fetch(`/api/assets?${params.toString()}`);
-      const result = (await response.json()) as
-        | { success: true; data: Asset[] }
-        | { success: false; error?: { message?: string } };
+      const data = await apiClient.get<PaginatedResult<Asset>>("/api/assets", {
+        query: params,
+      });
 
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to load assets.");
-        setAssets([]);
-        return;
-      }
-
-      setAssets(result.data);
-    } catch {
-      toast.error("An error occurred while loading assets.");
+      setAssets(data.items);
+      setPagination(data);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "An error occurred while loading assets."));
       setAssets([]);
+      setPagination((current) => ({
+        ...current,
+        items: [],
+        page,
+        limit: PAGE_SIZE,
+        total: 0,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      }));
     } finally {
       setLoading(false);
     }
-  }, [categoryFilter, debouncedSearch, locationFilter, statusFilter]);
+  }, [categoryFilter, debouncedSearch, locationFilter, page, statusFilter, stockFilter]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiClient.get<AssetFieldOptions>("/api/assets/field-options");
+        setFieldOptions(data);
+      } catch {
+        // Keep the page usable if field options fail to load.
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const filtersChanged = filterKeyRef.current !== filterKey;
+    filterKeyRef.current = filterKey;
+
     if (skipInitialFetch.current) {
       skipInitialFetch.current = false;
       return;
     }
 
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+
     void fetchAssets();
-  }, [fetchAssets]);
+  }, [fetchAssets, filterKey, page]);
 
   const categories = useMemo(() => {
-    const options = Array.from(
-      new Set(
-        assets
-          .map((asset) => asset.category)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ).sort((left, right) => left.localeCompare(right));
+    const options = [...fieldOptions.categories].sort((left, right) =>
+      left.localeCompare(right),
+    );
 
     return withSelectedOption(options, categoryFilter);
-  }, [assets, categoryFilter]);
+  }, [categoryFilter, fieldOptions.categories]);
 
   const locations = useMemo(() => {
-    const options = Array.from(
-      new Set(
-        assets
-          .map((asset) => asset.location)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ).sort((left, right) => left.localeCompare(right));
+    const options = [...fieldOptions.locations].sort((left, right) =>
+      left.localeCompare(right),
+    );
 
     return withSelectedOption(options, locationFilter);
-  }, [assets, locationFilter]);
+  }, [fieldOptions.locations, locationFilter]);
 
   const availableCount = assets.filter(
     (asset) => asset.status === "available" && asset.availableQty > 0,
@@ -166,7 +214,7 @@ export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) 
           <p className="text-sm text-muted-foreground">
             {t("assets.page.metrics.visibleItems")}
           </p>
-          <p className="mt-2 text-3xl font-semibold">{assets.length}</p>
+          <p className="mt-2 text-3xl font-semibold">{pagination.total}</p>
         </div>
         <div className="metric-tile">
           <p className="text-sm text-muted-foreground">
@@ -191,7 +239,7 @@ export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) 
           <SlidersHorizontal className="size-4" />
           {t("assets.page.filters")}
         </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -225,6 +273,22 @@ export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) 
             placeholder={t("assets.page.filterOptions.allStatuses")}
           />
           <Combobox
+            value={stockFilter}
+            onChange={(value) => setStockFilter(value || "all")}
+            options={[
+              { value: "all", label: t("assets.page.filterOptions.allStock") },
+              {
+                value: "in_stock",
+                label: t("assets.page.filterOptions.inStock"),
+              },
+              {
+                value: "out_of_stock",
+                label: t("assets.page.filterOptions.outOfStock"),
+              },
+            ]}
+            placeholder={t("assets.page.filterOptions.allStock")}
+          />
+          <Combobox
             value={categoryFilter}
             onChange={(value) => setCategoryFilter(value || "all")}
             options={[
@@ -246,11 +310,16 @@ export function AssetsPageClient({ initialAssets }: { initialAssets: Asset[] }) 
       </section>
 
       <AssetDataTable
-        key={[debouncedSearch, statusFilter, categoryFilter, locationFilter].join(":")}
+        key={[debouncedSearch, statusFilter, stockFilter, categoryFilter, locationFilter].join(":")}
         assets={assets}
         loading={loading}
         canManage={canManage}
         searchTerm={debouncedSearch}
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={setPage}
       />
     </div>
   );

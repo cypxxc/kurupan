@@ -1,5 +1,6 @@
 import { withTransactionContext } from "@/db/postgres";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import type { PaginatedResult } from "@/lib/pagination";
 import type {
   AssetCreateInput,
   AssetListQuery,
@@ -29,6 +30,12 @@ export class AssetService {
 
   async listAssets(filters: AssetListQuery) {
     return this.assetRepository.findMany(filters);
+  }
+
+  async listAssetPage(
+    filters: AssetListQuery,
+  ): Promise<PaginatedResult<Awaited<ReturnType<AssetRepository["findMany"]>>[number]>> {
+    return this.assetRepository.findPage(filters);
   }
 
   async getAssetById(id: number) {
@@ -62,10 +69,16 @@ export class AssetService {
     const seriesId = input.assetCodeSeriesId;
 
     return withTransactionContext(async (ctx) => {
+      const claimedSeriesBefore =
+        seriesId !== null ? await ctx.assetCodeSeriesRepo.findById(seriesId) : null;
+
       const assetCode =
         seriesId !== null
-          ? await ctx.assetCodeSeriesRepo.claimNextCode(seriesId)
+          ? (await ctx.assetCodeSeriesRepo.claimNextCode(seriesId)).claimedCode
           : input.assetCode;
+
+      const claimedSeriesAfter =
+        seriesId !== null ? await ctx.assetCodeSeriesRepo.findById(seriesId) : null;
 
       if (seriesId === null) {
         const existingByCode = await ctx.assetRepo.findByAssetCode(assetCode);
@@ -90,6 +103,21 @@ export class AssetService {
 
       if (!createdAsset) {
         throw new NotFoundError("ไม่พบครุภัณฑ์", { assetId: asset.id });
+      }
+
+      if (claimedSeriesBefore && claimedSeriesAfter) {
+        await ctx.auditService.record({
+          actor,
+          action: "asset_code_series.claim_next_code",
+          entityType: "asset_code_series",
+          entityId: claimedSeriesAfter.id,
+          beforeData: claimedSeriesBefore,
+          afterData: {
+            ...claimedSeriesAfter,
+            claimedCode: assetCode,
+            assetId: createdAsset.id,
+          },
+        });
       }
 
       await ctx.auditService.record({

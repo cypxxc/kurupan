@@ -14,25 +14,42 @@ type NotificationCreateInput = {
   body: string;
   entityType?: NotificationEntityType | null;
   entityId?: string | null;
+  dedupeKey?: string | null;
 };
 
 export class NotificationRepository {
   constructor(private readonly db: DbExecutor = getDb()) {}
 
-  async create(input: NotificationCreateInput): Promise<NotificationRecord> {
-    const [record] = await this.db
-      .insert(notifications)
-      .values({
-        recipientExternalUserId: input.recipientExternalUserId,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        entityType: input.entityType ?? null,
-        entityId: input.entityId ?? null,
-      })
-      .returning();
+  async create(input: NotificationCreateInput): Promise<NotificationRecord | null> {
+    const values = {
+      recipientExternalUserId: input.recipientExternalUserId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      entityType: input.entityType ?? null,
+      entityId: input.entityId ?? null,
+      dedupeKey: input.dedupeKey ?? null,
+    };
 
-    return record;
+    if (input.dedupeKey) {
+      const [record] = await this.db
+        .insert(notifications)
+        .values(values)
+        .onConflictDoNothing({
+          target: [
+            notifications.recipientExternalUserId,
+            notifications.type,
+            notifications.dedupeKey,
+          ],
+        })
+        .returning();
+
+      return record ?? null;
+    }
+
+    const [record] = await this.db.insert(notifications).values(values).returning();
+
+    return record ?? null;
   }
 
   async findMany(recipientExternalUserId: string, limit = 30): Promise<NotificationRecord[]> {

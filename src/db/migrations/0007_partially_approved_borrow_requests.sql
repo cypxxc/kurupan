@@ -1,0 +1,3 @@
+ALTER TYPE "public"."borrow_request_status" ADD VALUE 'partially_approved' BEFORE 'rejected';--> statement-breakpoint
+ALTER TABLE "borrow_request_items" DROP CONSTRAINT "borrow_request_items_approved_qty_positive";--> statement-breakpoint
+ALTER TABLE "borrow_request_items" ADD CONSTRAINT "borrow_request_items_approved_qty_non_negative" CHECK ("borrow_request_items"."approved_qty" IS NULL OR "borrow_request_items"."approved_qty" >= 0);

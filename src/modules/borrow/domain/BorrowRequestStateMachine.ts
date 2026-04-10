@@ -3,14 +3,16 @@ import { ConflictError } from "@/lib/errors";
 export type BorrowRequestStatus =
   | "pending"
   | "approved"
+  | "partially_approved"
   | "rejected"
   | "cancelled"
   | "partially_returned"
   | "returned";
 
 const TRANSITIONS: Record<BorrowRequestStatus, BorrowRequestStatus[]> = {
-  pending: ["approved", "rejected", "cancelled"],
+  pending: ["approved", "partially_approved", "rejected", "cancelled"],
   approved: ["partially_returned", "returned", "cancelled"],
+  partially_approved: ["partially_returned", "returned", "cancelled"],
   partially_returned: ["returned"],
   rejected: [],
   cancelled: [],

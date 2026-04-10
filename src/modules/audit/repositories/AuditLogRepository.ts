@@ -1,7 +1,12 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, type SQLWrapper } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import { auditLogs, localAuthUsers } from "@/db/schema";
+import {
+  buildPaginatedResult,
+  resolvePagination,
+  type PaginatedResult,
+} from "@/lib/pagination";
 import type { AuditLogListQuery } from "@/lib/validators/history";
 
 export type CreateAuditLogInput = {
@@ -45,7 +50,44 @@ export class AuditLogRepository {
   }
 
   async findMany(filters: AuditLogListQuery): Promise<AuditLogRecord[]> {
-    const conditions = [];
+    const rows = await this.selectRecords(this.buildConditions(filters));
+
+    return rows.map((row) => ({
+      ...row,
+      actorName: row.actorName ?? null,
+    }));
+  }
+
+  async findPage(
+    filters: AuditLogListQuery,
+    defaultLimit = 20,
+  ): Promise<PaginatedResult<AuditLogRecord>> {
+    const conditions = this.buildConditions(filters);
+    const pagination = resolvePagination(filters, defaultLimit);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await this.db
+      .select({ total: count() })
+      .from(auditLogs)
+      .where(whereClause);
+    const rows = await this.selectRecords(
+      conditions,
+      pagination.limit,
+      pagination.offset,
+    );
+
+    return buildPaginatedResult(
+      rows.map((row) => ({
+        ...row,
+        actorName: row.actorName ?? null,
+      })),
+      countRow?.total ?? 0,
+      pagination,
+    );
+  }
+
+  private buildConditions(filters: AuditLogListQuery) {
+    const conditions: SQLWrapper[] = [];
 
     if (filters.entityType) {
       conditions.push(eq(auditLogs.entityType, filters.entityType));
@@ -67,6 +109,10 @@ export class AuditLogRepository {
       conditions.push(lte(auditLogs.createdAt, toDateRangeEnd(filters.dateTo)));
     }
 
+    return conditions;
+  }
+
+  private async selectRecords(conditions: SQLWrapper[], limit?: number, offset?: number) {
     const query = this.db
       .select({
         id: auditLogs.id,
@@ -85,12 +131,9 @@ export class AuditLogRepository {
         eq(auditLogs.actorExternalUserId, localAuthUsers.externalUserId),
       )
       .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id));
+    const pagedQuery =
+      limit === undefined || offset === undefined ? query : query.limit(limit).offset(offset);
 
-    const rows = conditions.length > 0 ? await query.where(and(...conditions)) : await query;
-
-    return rows.map((row) => ({
-      ...row,
-      actorName: row.actorName ?? null,
-    }));
+    return conditions.length > 0 ? pagedQuery.where(and(...conditions)) : pagedQuery;
   }
 }

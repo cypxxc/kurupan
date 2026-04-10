@@ -8,6 +8,7 @@ import type { BorrowRequestCreateInput } from "@/lib/validators/borrow-requests"
 import type { AssetRepository } from "@/modules/assets/repositories/AssetRepository";
 
 import type { BorrowRequestDetail } from "../repositories/BorrowRequestRepository";
+import type { BorrowRequestStatus } from "../domain/BorrowRequestStateMachine";
 
 type BorrowableAssetRow = Awaited<ReturnType<AssetRepository["findByIds"]>>[number];
 
@@ -66,6 +67,17 @@ export function resolveApprovedItems(
           borrowRequestItemId: approval.borrowRequestItemId,
         });
       }
+
+      if (approval.approvedQty > requestItem.requestedQty) {
+        throw new ValidationError(
+          "Approved quantity must not exceed the requested quantity",
+          {
+            borrowRequestItemId: requestItem.id,
+            approvedQty: approval.approvedQty,
+            requestedQty: requestItem.requestedQty,
+          },
+        );
+      }
     }
   }
 
@@ -74,18 +86,72 @@ export function resolveApprovedItems(
     approvedQty: overrides.get(item.id) ?? item.requestedQty,
   }));
 
-  for (const item of approvedItems) {
-    if (item.approvedQty > item.requestedQty) {
-      throw new ValidationError(
-        "Approved quantity must not exceed the requested quantity",
-        {
-          borrowRequestItemId: item.id,
-          approvedQty: item.approvedQty,
-          requestedQty: item.requestedQty,
-        },
-      );
-    }
+  return approvedItems;
+}
+
+export function resolveApprovalStatus(
+  approvedItems: Array<{ requestedQty: number; approvedQty: number }>,
+): Extract<BorrowRequestStatus, "approved" | "partially_approved"> {
+  const approvedCount = approvedItems.filter((item) => item.approvedQty > 0).length;
+
+  if (approvedCount === 0) {
+    throw new ValidationError(
+      "Approve at least one item, or reject the request instead",
+    );
   }
 
-  return approvedItems;
+  const approvedInFull = approvedItems.every(
+    (item) => item.approvedQty === item.requestedQty,
+  );
+
+  return approvedInFull ? "approved" : "partially_approved";
+}
+
+export function getRestockItemsForCancellation(
+  request: Pick<BorrowRequestDetail, "status" | "items">,
+) {
+  if (request.status !== "approved" && request.status !== "partially_approved") {
+    return [];
+  }
+
+  return request.items
+    .map((item) => ({
+      assetId: item.assetId,
+      qty: item.approvedQty ?? 0,
+    }))
+    .filter((item) => item.qty > 0);
+}
+
+export function shouldNotifyBorrowerOfCancellation(
+  previousStatus: BorrowRequestStatus,
+  actorExternalUserId: string,
+  borrowerExternalUserId: string,
+) {
+  return (
+    (previousStatus === "approved" || previousStatus === "partially_approved") &&
+    actorExternalUserId !== borrowerExternalUserId
+  );
+}
+
+export function getRemainingItemsForFollowUp(
+  request: Pick<BorrowRequestDetail, "status" | "items">,
+) {
+  if (request.status !== "partially_approved") {
+    throw new ConflictError(
+      "Follow-up requests can only be created from partially approved requests",
+    );
+  }
+
+  const remainingItems = request.items
+    .map((item) => ({
+      assetId: item.assetId,
+      requestedQty: Math.max(0, item.requestedQty - (item.approvedQty ?? 0)),
+    }))
+    .filter((item) => item.requestedQty > 0);
+
+  if (remainingItems.length === 0) {
+    throw new ValidationError("There are no remaining items to request again");
+  }
+
+  return remainingItems;
 }

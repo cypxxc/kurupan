@@ -35,11 +35,12 @@ export const GET = withErrorHandler(async (request: Request) => {
   const { notificationService } = createNotificationStack();
   const requests = await borrowRequestRepository.findManyOverdue(today, [
     "approved",
+    "partially_approved",
     "partially_returned",
   ]);
 
   await Promise.allSettled(
-    requests.map((borrowRequest) => notificationService.notifyOverdue(borrowRequest)),
+    requests.map((borrowRequest) => notificationService.notifyOverdue(borrowRequest, today)),
   );
 
   return successResponse({

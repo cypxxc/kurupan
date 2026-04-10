@@ -18,6 +18,7 @@ import { ValidationError } from "@/lib/errors";
 import { dateStringSchema, positiveIntegerIdSchema } from "./http";
 
 const assetStatusValues = ["available", "maintenance", "retired"] as const;
+const assetStockValues = ["in_stock", "out_of_stock"] as const;
 
 const emptyStringToNull = (value: unknown) =>
   typeof value === "string" && value.trim().length === 0 ? null : value;
@@ -47,6 +48,10 @@ export const assetListQuerySchema = z.object({
   category: z.string().trim().max(100).optional().default(""),
   location: z.string().trim().max(255).optional().default(""),
   status: z.enum(assetStatusValues).optional(),
+  stock: z.enum(assetStockValues).optional(),
+  borrowable: z.coerce.boolean().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export const assetCreateSchema = z

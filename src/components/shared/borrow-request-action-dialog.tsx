@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, ShieldAlert, XCircle } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Plus, ShieldAlert, XCircle } from "lucide-react";
 
 import {
   AlertDialog,
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type ActionKind = "approve" | "reject" | "cancel";
+type ActionKind = "reject" | "cancel" | "followUp";
 
 const ACTION_CONFIG: Record<
   ActionKind,
@@ -26,23 +27,12 @@ const ACTION_CONFIG: Record<
     description: string;
     confirmLabel: string;
     confirmVariant: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
-    icon: typeof CheckCircle2;
+    icon: LucideIcon;
     requireReason: boolean;
     reasonLabel: string;
     reasonPlaceholder: string;
   }
 > = {
-  approve: {
-    title: "Approve request",
-    description:
-      "This will reserve stock immediately and move the request out of the pending state.",
-    confirmLabel: "Confirm approval",
-    confirmVariant: "default",
-    icon: CheckCircle2,
-    requireReason: false,
-    reasonLabel: "",
-    reasonPlaceholder: "",
-  },
   reject: {
     title: "Reject request",
     description:
@@ -64,6 +54,17 @@ const ACTION_CONFIG: Record<
     requireReason: true,
     reasonLabel: "Cancellation reason",
     reasonPlaceholder: "Explain why this request is being cancelled",
+  },
+  followUp: {
+    title: "Create follow-up request",
+    description:
+      "A new pending request will be created automatically for the remaining quantities that were not approved in this request.",
+    confirmLabel: "Create pending request",
+    confirmVariant: "default",
+    icon: Plus,
+    requireReason: false,
+    reasonLabel: "",
+    reasonPlaceholder: "",
   },
 };
 

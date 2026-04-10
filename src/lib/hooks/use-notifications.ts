@@ -8,31 +8,10 @@ import {
   useState,
 } from "react";
 
+import { apiClient } from "@/lib/api-client";
 import type { NotificationItem, NotificationSSEPayload } from "@/types/notifications";
 
-type ApiSuccess<T> = {
-  success: true;
-  data: T;
-};
-
-type ApiFailure = {
-  success: false;
-  error?: {
-    message?: string;
-  };
-};
-
 const DEFAULT_LIMIT = 30;
-
-async function readApiResponse<T>(response: Response): Promise<T> {
-  const result = (await response.json()) as ApiSuccess<T> | ApiFailure;
-
-  if (!result.success) {
-    throw new Error(result.error?.message ?? "Notification request failed");
-  }
-
-  return result.data;
-}
 
 export function useNotifications(limit = DEFAULT_LIMIT) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -45,10 +24,9 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     setLoadingCount(true);
 
     try {
-      const response = await fetch("/api/notifications/unread-count", {
+      const data = await apiClient.get<{ count: number }>("/api/notifications/unread-count", {
         cache: "no-store",
       });
-      const data = await readApiResponse<{ count: number }>(response);
       setUnreadCount(data.count);
       return true;
     } catch {
@@ -62,10 +40,10 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     setLoadingNotifications(true);
 
     try {
-      const response = await fetch(`/api/notifications?limit=${limit}`, {
+      const data = await apiClient.get<NotificationItem[]>("/api/notifications", {
+        query: { limit },
         cache: "no-store",
       });
-      const data = await readApiResponse<NotificationItem[]>(response);
 
       startTransition(() => {
         setNotifications(data);
@@ -102,6 +80,14 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     }
   });
 
+  const handleStreamError = useEffectEvent(() => {
+    void loadUnreadCount();
+
+    if (hasLoadedNotifications) {
+      void loadNotifications();
+    }
+  });
+
   useEffect(() => {
     void loadUnreadCount();
   }, [loadUnreadCount]);
@@ -110,6 +96,9 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     const eventSource = new EventSource("/api/notifications/stream");
 
     eventSource.onmessage = handleStreamMessage;
+    eventSource.onerror = () => {
+      handleStreamError();
+    };
 
     return () => {
       eventSource.close();
@@ -142,10 +131,7 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
       setUnreadCount((current) => Math.max(0, current - 1));
 
       try {
-        const response = await fetch(`/api/notifications/${id}/read`, {
-          method: "PATCH",
-        });
-        await readApiResponse<NotificationItem>(response);
+        await apiClient.patch<NotificationItem>(`/api/notifications/${id}/read`);
         return true;
       } catch {
         void loadNotifications();
@@ -171,10 +157,7 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     setUnreadCount(0);
 
     try {
-      const response = await fetch("/api/notifications/read-all", {
-        method: "PATCH",
-      });
-      await readApiResponse<{ markedCount: number }>(response);
+      await apiClient.patch<{ markedCount: number }>("/api/notifications/read-all");
       return true;
     } catch {
       void loadNotifications();

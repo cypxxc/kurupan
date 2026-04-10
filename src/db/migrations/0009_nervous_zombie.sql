@@ -1,0 +1,1 @@
+CREATE INDEX "return_transactions_borrow_request_id_idx" ON "return_transactions" USING btree ("borrow_request_id");

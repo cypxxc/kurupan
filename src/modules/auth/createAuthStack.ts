@@ -1,3 +1,4 @@
+import type { DbExecutor } from "@/db/postgres";
 import { UserAccessRepository } from "@/modules/access/repositories/UserAccessRepository";
 import { AccessService } from "@/modules/access/services/AccessService";
 
@@ -6,10 +7,10 @@ import { LocalAuthUserRepository } from "./repositories/LocalAuthUserRepository"
 import { SessionRepository } from "./repositories/SessionRepository";
 import { AuthService } from "./services/AuthService";
 
-export function createAuthStack() {
-  const localAuthUserRepository = new LocalAuthUserRepository();
-  const sessionRepository = new SessionRepository();
-  const userAccessRepository = new UserAccessRepository();
+export function createAuthStack(db?: DbExecutor) {
+  const localAuthUserRepository = new LocalAuthUserRepository(db);
+  const sessionRepository = new SessionRepository(db);
+  const userAccessRepository = new UserAccessRepository(db);
   const accessService = new AccessService(userAccessRepository);
   const currentUserResolver = new CurrentUserResolver(
     sessionRepository,

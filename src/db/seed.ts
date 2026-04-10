@@ -1,16 +1,28 @@
+import { hash } from "bcryptjs";
 import { sql } from "drizzle-orm";
 import { config } from "dotenv";
+
+import { assertNotProductionEnvironment } from "@/lib/env/safety";
 
 config({ path: ".env.local" });
 config();
 
+assertNotProductionEnvironment("db:seed");
+
 async function main() {
+  const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!seedAdminPassword) {
+    throw new Error("SEED_ADMIN_PASSWORD must be set before running db:seed.");
+  }
+
   const [{ getDb, getPostgresClient }, { localAuthUsers, userAccess }] = await Promise.all([
     import("./postgres"),
     import("./schema"),
   ]);
   const db = getDb();
   const postgresClient = getPostgresClient();
+  const adminPasswordHash = await hash(seedAdminPassword, 10);
 
   try {
     await db
@@ -45,7 +57,7 @@ async function main() {
         {
           externalUserId: "admin",
           username: "admin",
-          passwordHash: "$2b$10$lVc/gNayOBeWawswpISUy.rul8PgYSvTBsMdHdDRMELxtzGsermsm",
+          passwordHash: adminPasswordHash,
           fullName: "System Administrator",
           email: "admin@local.test",
           employeeCode: "LOCAL-ADMIN-001",

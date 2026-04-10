@@ -8,6 +8,8 @@ import * as schema from "./schema";
 declare global {
   var __kurupanPostgresClient: ReturnType<typeof postgres> | undefined;
   var __kurupanDb: PostgresJsDatabase<typeof schema> | undefined;
+  var __kurupanPostgresShutdownPromise: Promise<void> | undefined;
+  var __kurupanPostgresShutdownRegistered: boolean | undefined;
 }
 
 function getDatabaseUrl() {
@@ -20,6 +22,46 @@ function getDatabaseUrl() {
   return databaseUrl;
 }
 
+async function closePostgresClientInstance() {
+  const client = globalThis.__kurupanPostgresClient;
+
+  if (!client) {
+    return;
+  }
+
+  await client.end();
+  globalThis.__kurupanPostgresClient = undefined;
+  globalThis.__kurupanDb = undefined;
+}
+
+function registerShutdownHooks() {
+  if (globalThis.__kurupanPostgresShutdownRegistered) {
+    return;
+  }
+
+  globalThis.__kurupanPostgresShutdownRegistered = true;
+
+  const shutdown = () => {
+    if (!globalThis.__kurupanPostgresShutdownPromise) {
+      globalThis.__kurupanPostgresShutdownPromise = closePostgresClientInstance().finally(() => {
+        globalThis.__kurupanPostgresShutdownPromise = undefined;
+      });
+    }
+
+    return globalThis.__kurupanPostgresShutdownPromise;
+  };
+
+  process.once("beforeExit", () => {
+    void shutdown();
+  });
+  process.once("SIGINT", () => {
+    void shutdown();
+  });
+  process.once("SIGTERM", () => {
+    void shutdown();
+  });
+}
+
 export function getPostgresClient() {
   if (!globalThis.__kurupanPostgresClient) {
     globalThis.__kurupanPostgresClient = postgres(getDatabaseUrl(), {
@@ -29,6 +71,7 @@ export function getPostgresClient() {
       idle_timeout: 20,
       connect_timeout: 10,
     });
+    registerShutdownHooks();
   }
 
   return globalThis.__kurupanPostgresClient;
@@ -54,4 +97,14 @@ export function withTransactionContext<T>(
   callback: (ctx: TransactionContext) => Promise<T>,
 ) {
   return withTransaction((tx) => callback(new TransactionContext(tx)));
+}
+
+export async function closePostgresClient() {
+  if (!globalThis.__kurupanPostgresShutdownPromise) {
+    globalThis.__kurupanPostgresShutdownPromise = closePostgresClientInstance().finally(() => {
+      globalThis.__kurupanPostgresShutdownPromise = undefined;
+    });
+  }
+
+  await globalThis.__kurupanPostgresShutdownPromise;
 }

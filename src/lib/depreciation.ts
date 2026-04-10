@@ -1,3 +1,5 @@
+import { ValidationError } from "@/lib/errors";
+
 export type DepreciationInput = {
   purchasePrice: number;
   purchaseDate: string;
@@ -29,11 +31,31 @@ function toUtcDate(dateString: string) {
   return new Date(`${dateString}T00:00:00Z`);
 }
 
+function assertDepreciationInput(
+  purchasePrice: number,
+  usefulLifeYears: number,
+  residualValue: number,
+) {
+  if (usefulLifeYears <= 0) {
+    throw new ValidationError("Useful life years must be greater than zero", {
+      usefulLifeYears,
+    });
+  }
+
+  if (residualValue > purchasePrice) {
+    throw new ValidationError("Residual value must not exceed purchase price", {
+      purchasePrice,
+      residualValue,
+    });
+  }
+}
+
 function getYearlyAmounts(
   purchasePrice: number,
   usefulLifeYears: number,
   residualValue: number,
 ) {
+  assertDepreciationInput(purchasePrice, usefulLifeYears, residualValue);
   const depreciableBase = purchasePrice - residualValue;
   const standardAnnual = roundToTwo(depreciableBase / usefulLifeYears);
 

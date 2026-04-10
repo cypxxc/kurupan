@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { todayString } from "@/components/pages/borrow-requests-new/borrow-request-form-helpers";
 import type { BorrowRequestFormItem } from "@/types/borrow-requests";
 
@@ -40,7 +41,8 @@ export function readDraft(): BorrowRequestDraft | null {
 
     const parsedDraft: unknown = JSON.parse(storedDraft);
     return isBorrowRequestDraft(parsedDraft) ? parsedDraft : null;
-  } catch {
+  } catch (error) {
+    console.warn("Failed to read borrow request draft from localStorage", error);
     return null;
   }
 }
@@ -52,7 +54,9 @@ export function writeDraft(draft: BorrowRequestDraft) {
 
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-  } catch {}
+  } catch (error) {
+    console.warn("Failed to write borrow request draft to localStorage", error);
+  }
 }
 
 export function removeDraft() {
@@ -62,10 +66,13 @@ export function removeDraft() {
 
   try {
     window.localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  } catch (error) {
+    console.warn("Failed to remove borrow request draft from localStorage", error);
+  }
 }
 
 export function useBorrowRequestDraft() {
+  const { t } = useI18n();
   const hasShownRestoreToastRef = useRef(false);
   const [restoredDraft] = useState<BorrowRequestDraft | null>(() => readDraft());
   const [items, setItems] = useState(() => restoredDraft?.items ?? []);
@@ -81,9 +88,9 @@ export function useBorrowRequestDraft() {
     hasShownRestoreToastRef.current = true;
 
     if (restoredDraft.items.length > 0 || restoredDraft.purpose.trim().length > 0) {
-      toast.success("ดึงข้อมูลแบบร่างกลับมาแล้ว");
+      toast.success(t("borrowRequestDraft.restored"));
     }
-  }, [restoredDraft]);
+  }, [restoredDraft, t]);
 
   useEffect(() => {
     writeDraft({

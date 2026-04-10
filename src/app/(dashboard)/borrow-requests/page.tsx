@@ -14,13 +14,17 @@ import { toast } from "sonner";
 import { BorrowRequestStatusTabs } from "@/components/shared/borrow-request-status-tabs";
 import { BorrowRequestDataTable } from "@/components/tables/borrow-request-data-table";
 import { buttonVariants } from "@/components/ui/button";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
+import type { PaginatedResult } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 import type {
   BorrowRequest,
   BorrowRequestStatus,
 } from "@/types/borrow-requests";
 import { BORROW_REQUEST_STATUS_VALUES } from "@/types/borrow-requests";
+
+const PAGE_SIZE = 10;
 
 function getStatusFilterFromSearchParams(searchParams: ReadonlyURLSearchParams) {
   const status = searchParams.get("status");
@@ -51,6 +55,15 @@ export default function BorrowRequestsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [requests, setRequests] = useState<BorrowRequest[]>([]);
+  const [pagination, setPagination] = useState<PaginatedResult<BorrowRequest>>({
+    items: [],
+    page: 1,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"all" | BorrowRequestStatus>(() =>
     getStatusFilterFromSearchParams(searchParams),
@@ -82,27 +95,33 @@ export default function BorrowRequestsPage() {
     if (statusFilter !== "all") {
       params.set("status", statusFilter);
     }
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_SIZE));
 
     try {
-      const response = await fetch(`/api/borrow-requests?${params.toString()}`);
-      const result = (await response.json()) as
-        | { success: true; data: BorrowRequest[] }
-        | { success: false; error?: { message?: string } };
+      const data = await apiClient.get<PaginatedResult<BorrowRequest>>("/api/borrow-requests", {
+        query: params,
+      });
 
-      if (!result.success) {
-        toast.error(result.error?.message ?? "ไม่สามารถโหลดคำขอยืมได้");
-        setRequests([]);
-        return;
-      }
-
-      setRequests(result.data);
-    } catch {
-      toast.error("เกิดข้อผิดพลาดระหว่างโหลดคำขอยืม");
+      setRequests(data.items);
+      setPagination(data);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "เกิดข้อผิดพลาดระหว่างโหลดคำขอยืม"));
       setRequests([]);
+      setPagination((current) => ({
+        ...current,
+        items: [],
+        page,
+        limit: PAGE_SIZE,
+        total: 0,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      }));
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [page, statusFilter]);
 
   useEffect(() => {
     void fetchRequests();
@@ -116,7 +135,9 @@ export default function BorrowRequestsPage() {
     () =>
       requests.filter(
         (request) =>
-          request.status === "approved" || request.status === "partially_returned",
+          request.status === "approved" ||
+          request.status === "partially_approved" ||
+          request.status === "partially_returned",
       ).length,
     [requests],
   );
@@ -209,18 +230,18 @@ export default function BorrowRequestsPage() {
       <div className="grid gap-3 md:grid-cols-3">
         <div className="metric-tile">
           <p className="text-sm text-muted-foreground">
-            {isBorrower ? "คำขอของฉัน" : "คำขอทั้งหมด"}
+            {isBorrower ? "คำขอในหน้านี้" : "คำขอในหน้านี้"}
           </p>
           <p className="mt-2 text-3xl font-semibold">{requests.length}</p>
         </div>
         <div className="metric-tile">
-          <p className="text-sm text-muted-foreground">รออนุมัติ</p>
+          <p className="text-sm text-muted-foreground">รออนุมัติในหน้านี้</p>
           <p className="mt-2 text-3xl font-semibold text-amber-600 dark:text-amber-400">
             {pendingCount}
           </p>
         </div>
         <div className="metric-tile">
-          <p className="text-sm text-muted-foreground">กำลังยืมอยู่</p>
+          <p className="text-sm text-muted-foreground">กำลังยืมในหน้านี้</p>
           <p className="mt-2 text-3xl font-semibold text-sky-600 dark:text-sky-400">
             {activeCount}
           </p>
@@ -245,7 +266,10 @@ export default function BorrowRequestsPage() {
         requests={requests}
         loading={loading}
         isBorrower={Boolean(isBorrower)}
-        page={page}
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
         returnTo={returnTo}
         onPageChange={handlePageChange}
       />

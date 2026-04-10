@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ReturnTransaction } from "@/types/returns";
 
@@ -51,20 +52,10 @@ export default function ReturnDetailPage() {
       setLoading(true);
 
       try {
-        const response = await fetch(`/api/returns/${id}`);
-        const result = (await response.json()) as
-          | { success: true; data: ReturnTransaction }
-          | { success: false; error?: { message?: string } };
-
-        if (!result.success) {
-          toast.error(result.error?.message ?? "ไม่สามารถโหลดรายละเอียดการคืนได้");
-          setTransaction(null);
-          return;
-        }
-
-        setTransaction(result.data);
-      } catch {
-        toast.error("เกิดข้อผิดพลาดระหว่างโหลดรายละเอียดการคืน");
+        const data = await apiClient.get<ReturnTransaction>(`/api/returns/${id}`);
+        setTransaction(data);
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "Unable to load return details."));
         setTransaction(null);
       } finally {
         setLoading(false);
@@ -94,15 +85,12 @@ export default function ReturnDetailPage() {
   if (!transaction) {
     return (
       <div className="empty-state">
-        <h1 className="text-xl font-semibold">ไม่พบรายการคืน</h1>
+        <h1 className="text-xl font-semibold">Return record not found.</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          ตรวจสอบรายการที่ต้องการเปิดดูอีกครั้ง
+          Check the selected record and try again.
         </p>
-        <Link
-          href="/returns"
-          className={cn(buttonVariants({ variant: "outline" }), "mt-5")}
-        >
-          กลับไปหน้ารายการ
+        <Link href="/returns" className={cn(buttonVariants({ variant: "outline" }), "mt-5")}>
+          Back to returns
         </Link>
       </div>
     );
@@ -115,55 +103,49 @@ export default function ReturnDetailPage() {
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit gap-2")}
       >
         <ArrowLeft className="size-4" />
-        กลับไปหน้ารายการคืน
+        Back to returns
       </Link>
 
       <section className="surface-panel surface-section">
         <div className="space-y-3">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            รายการคืน #{transaction.id}
+            Return #{transaction.id}
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight">รายละเอียดการคืน</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Return details</h1>
           <p className="text-sm text-muted-foreground">
-            อ้างอิงคำขอ {transaction.borrowRequestNo}
+            Borrow request reference {transaction.borrowRequestNo}
           </p>
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <DetailField label="คำขออ้างอิง" value={transaction.borrowRequestNo} />
-          <DetailField label="ผู้ยืม" value={transaction.borrowerName} />
-          <DetailField
-            label="รับคืนเมื่อ"
-            value={formatDateTime(transaction.returnedAt)}
-          />
-          <DetailField
-            label="ผู้รับคืน"
-            value={transaction.receivedByExternalUserId}
-          />
+          <DetailField label="Borrow request" value={transaction.borrowRequestNo} />
+          <DetailField label="Borrower" value={transaction.borrowerName} />
+          <DetailField label="Returned at" value={formatDateTime(transaction.returnedAt)} />
+          <DetailField label="Received by" value={transaction.receivedByExternalUserId} />
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <DetailField label="จำนวนหน่วยที่คืน" value={String(totalQty)} />
-          <DetailField label="หมายเหตุธุรกรรม" value={transaction.note ?? "-"} />
+          <DetailField label="Units returned" value={String(totalQty)} />
+          <DetailField label="Transaction note" value={transaction.note ?? "-"} />
         </div>
       </section>
 
       <section className="table-shell">
         <div className="border-b px-6 py-5">
-          <h2 className="text-lg font-semibold">รายการที่คืน</h2>
+          <h2 className="text-lg font-semibold">Returned items</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            รองรับทั้งคืนครบและคืนบางส่วนในธุรกรรมเดียว
+            Includes both full and partial returns captured in this transaction.
           </p>
         </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>รหัสครุภัณฑ์</TableHead>
-                <TableHead>ชื่อครุภัณฑ์</TableHead>
-                <TableHead className="text-center">จำนวนที่คืน</TableHead>
-                <TableHead>สภาพ</TableHead>
-                <TableHead>หมายเหตุ</TableHead>
+                <TableHead>Asset code</TableHead>
+                <TableHead>Asset name</TableHead>
+                <TableHead className="text-center">Return qty</TableHead>
+                <TableHead>Condition</TableHead>
+                <TableHead>Note</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

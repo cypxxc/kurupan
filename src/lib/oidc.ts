@@ -5,15 +5,17 @@ import type { JWTPayload } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { readCookie } from "@/lib/auth";
+import { parseWithSchema } from "@/lib/validators/http";
+import {
+  oidcDiscoveryDocumentSchema,
+  oidcTokenResponseSchema,
+  oidcTransactionPayloadSchema,
+  type OidcDiscoveryDocument,
+  type OidcTokenResponse,
+  type OidcTransactionPayload,
+} from "@/lib/validators/oidc";
 
 export const OIDC_TRANSACTION_COOKIE_NAME = "oidc_tx";
-
-type OidcDiscoveryDocument = {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  jwks_uri: string;
-};
 
 export type OidcIdentity = {
   externalUserId: string;
@@ -21,13 +23,6 @@ export type OidcIdentity = {
   email?: string | null;
   employeeCode?: string | null;
   department?: string | null;
-};
-
-type OidcTransactionPayload = {
-  state: string;
-  nonce: string;
-  codeVerifier: string;
-  nextPath: string;
 };
 
 type OidcConfig = {
@@ -108,7 +103,11 @@ export async function fetchOidcDiscoveryDocument(issuer: string) {
     throw new Error("Unable to load OIDC discovery document");
   }
 
-  return (await response.json()) as OidcDiscoveryDocument;
+  return parseWithSchema(
+    oidcDiscoveryDocumentSchema,
+    await response.json(),
+    "Invalid OIDC discovery document",
+  );
 }
 
 export function buildOidcRedirectUri(request: Request | NextRequest) {
@@ -142,17 +141,16 @@ export async function signOidcTransactionCookie(payload: OidcTransactionPayload)
 
 export async function verifyOidcTransactionCookie(cookieValue: string) {
   const { payload } = await jwtVerify(cookieValue, getSessionSecret());
+  const transaction = parseWithSchema(
+    oidcTransactionPayloadSchema,
+    payload,
+    "Invalid OIDC transaction cookie",
+  );
 
-  if (
-    typeof payload.state !== "string" ||
-    typeof payload.nonce !== "string" ||
-    typeof payload.codeVerifier !== "string" ||
-    typeof payload.nextPath !== "string"
-  ) {
-    throw new Error("Invalid OIDC transaction cookie");
-  }
-
-  return payload as unknown as OidcTransactionPayload;
+  return {
+    ...transaction,
+    nextPath: sanitizeNextPath(transaction.nextPath),
+  };
 }
 
 export function readOidcTransactionCookie(request: Request | NextRequest) {
@@ -232,12 +230,11 @@ export async function exchangeOidcAuthorizationCode(params: {
     throw new Error("OIDC token exchange failed");
   }
 
-  return (await response.json()) as {
-    access_token?: string;
-    id_token?: string;
-    token_type?: string;
-    expires_in?: number;
-  };
+  return parseWithSchema(
+    oidcTokenResponseSchema,
+    await response.json(),
+    "Invalid OIDC token response",
+  ) satisfies OidcTokenResponse;
 }
 
 export async function verifyOidcIdToken(params: {

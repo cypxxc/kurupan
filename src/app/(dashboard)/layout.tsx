@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import DashboardLayout from "@/components/layouts/dashboard-layout";
+import DashboardRuntimeErrorBoundary from "@/components/layouts/dashboard-runtime-error-boundary";
 import { AuthProvider } from "@/lib/auth-context";
 import { getCurrentActorFromServer } from "@/lib/server-auth";
 
@@ -17,7 +18,9 @@ export default async function DashboardGroupLayout({
 
   return (
     <AuthProvider initialUser={actor} initialResolved>
-      <DashboardLayout>{children}</DashboardLayout>
+      <DashboardRuntimeErrorBoundary>
+        <DashboardLayout>{children}</DashboardLayout>
+      </DashboardRuntimeErrorBoundary>
     </AuthProvider>
   );
 }

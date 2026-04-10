@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CircleSlash,
   ClipboardCheck,
+  Plus,
   RotateCcw,
   XCircle,
 } from "lucide-react";
@@ -22,9 +23,13 @@ type BorrowRequestHeaderProps = {
   request: BorrowRequestDetail;
   overdue: boolean;
   canApproveReject: boolean;
+  canApproveSelected: boolean;
+  selectedApprovalCount: number;
   canCancel: boolean;
   canRecordReturn: boolean;
-  onApprove: () => void;
+  remainingFollowUpCount?: number;
+  onApproveSelected: () => void;
+  onCreateFollowUp: () => void;
   onReject: () => void;
   onCancel: () => void;
 };
@@ -33,9 +38,13 @@ export function BorrowRequestHeader({
   request,
   overdue,
   canApproveReject,
+  canApproveSelected,
+  selectedApprovalCount,
   canCancel,
   canRecordReturn,
-  onApprove,
+  remainingFollowUpCount = 0,
+  onApproveSelected,
+  onCreateFollowUp,
   onReject,
   onCancel,
 }: BorrowRequestHeaderProps) {
@@ -65,7 +74,7 @@ export function BorrowRequestHeader({
             </p>
           </div>
 
-          {(canApproveReject || canCancel || canRecordReturn) && (
+          {(canApproveReject || canCancel || canRecordReturn || remainingFollowUpCount > 0) && (
             <div className="flex flex-wrap gap-2">
               {canRecordReturn ? (
                 <Link
@@ -76,15 +85,30 @@ export function BorrowRequestHeader({
                   Record return
                 </Link>
               ) : null}
+              {remainingFollowUpCount > 0 ? (
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "outline" }), "gap-2")}
+                  onClick={onCreateFollowUp}
+                >
+                  <Plus className="size-4" />
+                  {remainingFollowUpCount > 0
+                    ? `Request remaining items (${remainingFollowUpCount})`
+                    : "Request remaining items"}
+                </button>
+              ) : null}
               {canApproveReject ? (
                 <>
                   <button
                     type="button"
                     className={cn(buttonVariants({ variant: "default" }), "gap-2")}
-                    onClick={onApprove}
+                    onClick={onApproveSelected}
+                    disabled={!canApproveSelected}
                   >
                     <ClipboardCheck className="size-4" />
-                    Approve
+                    {selectedApprovalCount > 0
+                      ? `Approve selected (${selectedApprovalCount})`
+                      : "Approve selected"}
                   </button>
                   <button
                     type="button"

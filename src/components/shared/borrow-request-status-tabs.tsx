@@ -11,6 +11,7 @@ export const BORROW_REQUEST_STATUS_TABS: Array<{
   { value: "all", label: "All" },
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
+  { value: "partially_approved", label: "Partially approved" },
   { value: "rejected", label: "Rejected" },
   { value: "cancelled", label: "Cancelled" },
   { value: "partially_returned", label: "Partially returned" },

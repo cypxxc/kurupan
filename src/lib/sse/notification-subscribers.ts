@@ -33,6 +33,10 @@ export function subscribe(userId: string, send: SendFn): () => void {
   };
 }
 
+export function countSubscribers(userId: string) {
+  return subscribers.get(userId)?.size ?? 0;
+}
+
 export function broadcast(userId: string, event: NotificationSSEPayload) {
   const listeners = subscribers.get(userId);
 

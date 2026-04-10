@@ -29,7 +29,10 @@ export function withErrorHandler<TArgs extends unknown[]>(
             message: localizeErrorMessage(error, locale),
             details: localizeErrorDetails(error.details, locale),
           },
-          { status: error.statusCode },
+          {
+            status: error.statusCode,
+            headers: error.headers,
+          },
         );
       }
 

@@ -2,6 +2,7 @@
 
 import { ImagePlus, Trash2 } from "lucide-react";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import {
   ASSET_IMAGE_MAX_COUNT,
   ASSET_IMAGE_MIN_COUNT,
@@ -35,6 +36,7 @@ export function AssetImagePicker({
   onRemoveImage: (index: number) => void;
   hasError?: boolean;
 }) {
+  const { t } = useI18n();
   const remainingSlots = Math.max(0, ASSET_IMAGE_MAX_COUNT - images.length);
 
   return (
@@ -49,14 +51,20 @@ export function AssetImagePicker({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium">Asset images</p>
+          <p className="text-sm font-medium">{t("assetImagePicker.title")}</p>
           <p className="text-xs text-muted-foreground">
-            Add {ASSET_IMAGE_MIN_COUNT}-{ASSET_IMAGE_MAX_COUNT} images. The first image is used as the cover.
+            {t("assetImagePicker.description", {
+              min: ASSET_IMAGE_MIN_COUNT,
+              max: ASSET_IMAGE_MAX_COUNT,
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">
-            {images.length}/{ASSET_IMAGE_MAX_COUNT}
+            {t("assetImagePicker.count", {
+              current: images.length,
+              max: ASSET_IMAGE_MAX_COUNT,
+            })}
           </span>
           <label
             className={cn(
@@ -66,7 +74,7 @@ export function AssetImagePicker({
             )}
           >
             <ImagePlus className="size-4" />
-            Add images
+            {t("assetImagePicker.add")}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -84,9 +92,11 @@ export function AssetImagePicker({
 
       {images.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/80 bg-muted/30 px-5 py-8 text-center">
-          <p className="font-medium">No images selected</p>
+          <p className="font-medium">{t("assetImagePicker.emptyTitle")}</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Upload JPG, PNG, or WebP. Maximum {formatAssetImageFileSizeLimit()} per image.
+            {t("assetImagePicker.emptyDescription", {
+              size: formatAssetImageFileSizeLimit(),
+            })}
           </p>
         </div>
       ) : (
@@ -99,16 +109,18 @@ export function AssetImagePicker({
               <div className="relative aspect-square bg-muted/40">
                 <img
                   src={image.url}
-                  alt={`Asset preview ${index + 1}`}
+                  alt={t("assetImagePicker.previewAlt", { index: index + 1 })}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute left-3 top-3 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium shadow-sm">
-                  {index === 0 ? "Cover" : `Image ${index + 1}`}
+                  {index === 0
+                    ? t("assetImagePicker.cover")
+                    : t("assetImagePicker.imageNumber", { index: index + 1 })}
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 px-3 py-3">
                 <p className="min-w-0 truncate text-sm text-muted-foreground">
-                  {image.kind === "existing" ? "Saved image" : image.file.name}
+                  {image.kind === "existing" ? t("assetImagePicker.savedImage") : image.file.name}
                 </p>
                 <Button
                   type="button"
@@ -118,7 +130,7 @@ export function AssetImagePicker({
                   onClick={() => onRemoveImage(index)}
                 >
                   <Trash2 className="size-4" />
-                  Remove
+                  {t("assetImagePicker.remove")}
                 </Button>
               </div>
             </div>
@@ -127,7 +139,7 @@ export function AssetImagePicker({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Recommended: use clear front, side, and accessory shots. Remaining slots: {remainingSlots}.
+        {t("assetImagePicker.footer", { remaining: remainingSlots })}
       </p>
     </div>
   );

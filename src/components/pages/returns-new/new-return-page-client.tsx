@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { ReturnItemsTable } from "@/components/pages/returns-new/return-items-table";
 import { ReturnPermissionDenied } from "@/components/pages/returns-new/return-permission-denied";
 import { ReturnRequestDetails } from "@/components/pages/returns-new/return-request-details";
@@ -13,6 +14,7 @@ import { buildReturnedQtyMap } from "@/components/pages/returns-new/return-form-
 import { ReturnSummarySidebar } from "@/components/pages/returns-new/return-summary-sidebar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +34,7 @@ import {
 } from "@/types/returns";
 
 export function NewReturnPageClient() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -52,30 +55,24 @@ export function NewReturnPageClient() {
       setLoadingRequests(true);
 
       try {
-        const [approvedResponse, partialResponse] = await Promise.all([
-          fetch("/api/borrow-requests?status=approved"),
-          fetch("/api/borrow-requests?status=partially_returned"),
-        ]);
+        const [approvedRequests, partiallyApprovedRequests, partiallyReturnedRequests] =
+          await Promise.all([
+            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
+              query: { status: "approved" },
+            }),
+            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
+              query: { status: "partially_approved" },
+            }),
+            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
+              query: { status: "partially_returned" },
+            }),
+          ]);
 
-        const [approvedResult, partialResult] = (await Promise.all([
-          approvedResponse.json(),
-          partialResponse.json(),
-        ])) as [
-          { success: boolean; data?: BorrowRequestDetail[]; error?: { message?: string } },
-          { success: boolean; data?: BorrowRequestDetail[]; error?: { message?: string } },
-        ];
-
-        if (!approvedResult.success || !partialResult.success) {
-          toast.error(
-            approvedResult.error?.message ??
-              partialResult.error?.message ??
-              "Unable to load requests eligible for return.",
-          );
-          setEligibleRequests([]);
-          return;
-        }
-
-        const merged = [...(approvedResult.data ?? []), ...(partialResult.data ?? [])]
+        const merged = [
+          ...approvedRequests,
+          ...partiallyApprovedRequests,
+          ...partiallyReturnedRequests,
+        ]
           .filter(
             (request, index, allRequests) =>
               allRequests.findIndex((candidate) => candidate.id === request.id) === index,
@@ -88,8 +85,8 @@ export function NewReturnPageClient() {
         if (preselectedRequestId) {
           setSelectedBorrowRequestId(preselectedRequestId);
         }
-      } catch {
-        toast.error("An error occurred while loading returnable requests.");
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, t("returnsNew.loadEligibleError")));
         setEligibleRequests([]);
       } finally {
         setLoadingRequests(false);
@@ -101,7 +98,7 @@ export function NewReturnPageClient() {
     } else {
       setLoadingRequests(false);
     }
-  }, [canManage, searchParams]);
+  }, [canManage, searchParams, t]);
 
   useEffect(() => {
     async function loadSelectedRequest() {
@@ -114,32 +111,15 @@ export function NewReturnPageClient() {
       setLoadingItems(true);
 
       try {
-        const [requestResponse, returnsResponse] = await Promise.all([
-          fetch(`/api/borrow-requests/${selectedBorrowRequestId}`),
-          fetch(`/api/returns?borrowRequestId=${selectedBorrowRequestId}`),
+        const [requestData, returnsData] = await Promise.all([
+          apiClient.get<BorrowRequestDetail>(`/api/borrow-requests/${selectedBorrowRequestId}`),
+          apiClient.get<ReturnTransaction[]>("/api/returns", {
+            query: { borrowRequestId: selectedBorrowRequestId },
+          }),
         ]);
 
-        const [requestResult, returnsResult] = (await Promise.all([
-          requestResponse.json(),
-          returnsResponse.json(),
-        ])) as [
-          { success: boolean; data?: BorrowRequestDetail; error?: { message?: string } },
-          { success: boolean; data?: ReturnTransaction[]; error?: { message?: string } },
-        ];
-
-        if (!requestResult.success || !returnsResult.success || !requestResult.data) {
-          toast.error(
-            requestResult.error?.message ??
-              returnsResult.error?.message ??
-              "Unable to load the selected borrow request.",
-          );
-          setSelectedRequest(null);
-          setReturnItems([]);
-          return;
-        }
-
-        const returnedQtyMap = buildReturnedQtyMap(returnsResult.data ?? []);
-        const nextItems: ReturnFormItem[] = requestResult.data.items
+        const returnedQtyMap = buildReturnedQtyMap(returnsData);
+        const nextItems: ReturnFormItem[] = requestData.items
           .map((item) => {
             const approvedQty = item.approvedQty ?? 0;
             const returnedQty = returnedQtyMap.get(item.id) ?? 0;
@@ -161,10 +141,10 @@ export function NewReturnPageClient() {
           })
           .filter((item) => item.remainingQty > 0);
 
-        setSelectedRequest(requestResult.data);
+        setSelectedRequest(requestData);
         setReturnItems(nextItems);
-      } catch {
-        toast.error("An error occurred while loading outstanding items.");
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, t("returnsNew.loadItemsError")));
         setSelectedRequest(null);
         setReturnItems([]);
       } finally {
@@ -173,7 +153,7 @@ export function NewReturnPageClient() {
     }
 
     void loadSelectedRequest();
-  }, [selectedBorrowRequestId]);
+  }, [selectedBorrowRequestId, t]);
 
   const activeItems = useMemo(
     () => returnItems.filter((item) => item.selected && item.returnQty > 0),
@@ -200,23 +180,19 @@ export function NewReturnPageClient() {
     event.preventDefault();
 
     if (!selectedRequest) {
-      toast.error("Select a borrow request before recording the return.");
+      toast.error(t("returnsNew.selectRequest"));
       return;
     }
 
     if (activeItems.length === 0) {
-      toast.error("Select at least one item to return.");
+      toast.error(t("returnsNew.selectItem"));
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const response = await fetch("/api/returns", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const data = await apiClient.post<{ id: number }>("/api/returns", {
         body: JSON.stringify({
           borrowRequestId: selectedRequest.id,
           returnedAt: fromDateTimeLocalValue(returnedAt),
@@ -230,20 +206,11 @@ export function NewReturnPageClient() {
         }),
       });
 
-      const result = (await response.json()) as
-        | { success: true; data: { id: number } }
-        | { success: false; error?: { message?: string } };
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to save the return.");
-        return;
-      }
-
-      toast.success("Return recorded successfully.");
-      router.push(`/returns/${result.data.id}`);
+      toast.success(t("returnsNew.created"));
+      router.push(`/returns/${data.id}`);
       router.refresh();
-    } catch {
-      toast.error("An error occurred while saving the return.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t("returnsNew.saveError")));
     } finally {
       setSubmitting(false);
     }
@@ -260,28 +227,26 @@ export function NewReturnPageClient() {
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit gap-2")}
       >
         <ArrowLeft className="size-4" />
-        Back to returns
+        {t("returnsNew.back")}
       </Link>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <form onSubmit={handleSubmit} className="surface-panel surface-section space-y-6">
           <div className="flex flex-col gap-2 border-b pb-5">
-            <h1 className="text-2xl font-semibold">Record return</h1>
-            <p className="text-sm text-muted-foreground">
-              Choose an approved or partially returned request, then record the quantity and
-              condition of the items being returned.
-            </p>
+            <h1 className="text-2xl font-semibold">{t("returnsNew.title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("returnsNew.description")}</p>
+            <p className="text-sm text-muted-foreground">{t("returnsNew.description2")}</p>
           </div>
 
           <section className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="borrowRequestId">Borrow request</Label>
+              <Label htmlFor="borrowRequestId">{t("returnsNew.labels.borrowRequest")}</Label>
               <Select
                 value={selectedBorrowRequestId}
                 onValueChange={(value) => setSelectedBorrowRequestId(value ?? "")}
               >
                 <SelectTrigger id="borrowRequestId" className="w-full">
-                  <SelectValue placeholder="Select a request" />
+                  <SelectValue placeholder={t("returnsNew.placeholders.selectRequest")} />
                 </SelectTrigger>
                 <SelectContent>
                   {eligibleRequests.map((request) => (
@@ -294,7 +259,7 @@ export function NewReturnPageClient() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="returnedAt">Returned at</Label>
+              <Label htmlFor="returnedAt">{t("returnsNew.labels.returnedAt")}</Label>
               <Input
                 id="returnedAt"
                 type="datetime-local"
@@ -305,12 +270,12 @@ export function NewReturnPageClient() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="note">Transaction note</Label>
+              <Label htmlFor="note">{t("returnsNew.labels.note")}</Label>
               <Input
                 id="note"
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="Optional note for this return"
+                placeholder={t("returnsNew.placeholders.note")}
               />
             </div>
           </section>
@@ -326,13 +291,13 @@ export function NewReturnPageClient() {
 
           <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
             <Link href="/returns" className={buttonVariants({ variant: "outline" })}>
-              Cancel
+              {t("returnsNew.actions.cancel")}
             </Link>
             <Button
               type="submit"
               disabled={submitting || activeItems.length === 0 || loadingRequests}
             >
-              {submitting ? "Saving..." : "Save return"}
+              {submitting ? t("returnsNew.actions.saving") : t("returnsNew.actions.save")}
             </Button>
           </div>
         </form>

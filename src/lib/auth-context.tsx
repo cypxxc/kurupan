@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { apiClient } from "@/lib/api-client";
 import { getClientAuthProviderMode, type AuthProviderMode } from "@/lib/auth-provider";
 
 export type UserRole = "admin" | "staff" | "borrower";
@@ -53,11 +54,10 @@ export function AuthProvider({
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/me");
-      const data = await response.json();
+      const data = await apiClient.get<{ user: AuthUser | null }>("/api/auth/me");
 
-      if (data.success && data.data?.user) {
-        setUser(data.data.user);
+      if (data.user) {
+        setUser(data.user);
       } else {
         setUser(null);
       }
@@ -83,18 +83,11 @@ export function AuthProvider({
       throw new Error("Password login is disabled.");
     }
 
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+    const data = await apiClient.post<{ user: AuthUser }>("/api/auth/login", {
+      body: { username, password },
     });
-    const data = await response.json();
 
-    if (!data.success) {
-      throw new Error(data.error?.message ?? "Login failed.");
-    }
-
-    setUser(data.data.user);
+    setUser(data.user);
   };
 
   const startSsoLogin = useCallback((nextPath = "/dashboard") => {
@@ -103,7 +96,7 @@ export function AuthProvider({
   }, []);
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiClient.post<never>("/api/auth/logout", { parseAs: "void" });
     setUser(null);
   };
 

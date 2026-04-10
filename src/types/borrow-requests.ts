@@ -1,6 +1,7 @@
 export const BORROW_REQUEST_STATUS_VALUES = [
   "pending",
   "approved",
+  "partially_approved",
   "rejected",
   "cancelled",
   "partially_returned",
@@ -14,6 +15,7 @@ export type BorrowRequestItemSummary = {
   assetId: number;
   assetCode: string;
   assetName: string;
+  availableQty: number;
   requestedQty: number;
   approvedQty: number | null;
 };
@@ -35,10 +37,11 @@ export type BorrowRequest = {
 export const BORROW_REQUEST_STATUS_SORT_ORDER: Record<BorrowRequestStatus, number> = {
   pending: 0,
   approved: 1,
-  partially_returned: 2,
-  returned: 3,
-  rejected: 4,
-  cancelled: 5,
+  partially_approved: 2,
+  partially_returned: 3,
+  returned: 4,
+  rejected: 5,
+  cancelled: 6,
 };
 
 export type BorrowRequestDetail = BorrowRequest & {
@@ -77,7 +80,11 @@ export function isBorrowRequestOverdue(
   dueDate: string,
   now = new Date(),
 ) {
-  if (status !== "approved" && status !== "partially_returned") {
+  if (
+    status !== "approved" &&
+    status !== "partially_approved" &&
+    status !== "partially_returned"
+  ) {
     return false;
   }
 

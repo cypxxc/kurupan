@@ -7,6 +7,7 @@ import { ArrowLeft, ClipboardList, ImageOff, PencilLine, Trash2 } from "lucide-r
 import { toast } from "sonner";
 
 import { AssetForm } from "@/components/forms/asset-form";
+import { useI18n } from "@/components/providers/i18n-provider";
 import { AssetImageGallery } from "@/components/shared/asset-image-gallery";
 import { DepreciationSection } from "@/components/shared/depreciation-section";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -29,30 +30,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAuth } from "@/lib/auth-context";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { formatAssetQuantity } from "@/lib/asset-standards";
+import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { toAssetFormValues, type AssetActivity, type AssetDetail } from "@/types/assets";
 
-const BAHT_FORMATTER = new Intl.NumberFormat("th-TH", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+function resolveIntlLocale(locale: string) {
+  return locale === "en" ? "en-US" : "th-TH";
+}
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("th-TH", {
+function formatDateTime(value: string, locale: string) {
+  return new Intl.DateTimeFormat(resolveIntlLocale(locale), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("th-TH", {
+function formatDate(value: string, locale: string) {
+  return new Intl.DateTimeFormat(resolveIntlLocale(locale), {
     dateStyle: "medium",
   }).format(new Date(value));
 }
 
-function formatBaht(value: number | string | null | undefined) {
+function formatBaht(
+  value: number | string | null | undefined,
+  locale: string,
+  unitLabel: string,
+) {
   if (value === null || value === undefined || value === "") {
     return "-";
   }
@@ -62,7 +67,10 @@ function formatBaht(value: number | string | null | undefined) {
     return "-";
   }
 
-  return `${BAHT_FORMATTER.format(numericValue)} บาท`;
+  return `${new Intl.NumberFormat(resolveIntlLocale(locale), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numericValue)} ${unitLabel}`;
 }
 
 function DetailField({
@@ -141,16 +149,20 @@ function SectionHeading({
   );
 }
 
-function EmptyImageState({ assetName }: { assetName: string }) {
+function EmptyImageState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
     <div className="flex min-h-[20rem] flex-col items-center justify-center rounded-sm border border-dashed border-border/80 bg-muted/20 px-6 text-center">
       <div className="flex size-12 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
         <ImageOff className="size-5" />
       </div>
-      <h3 className="mt-4 text-base font-semibold">ยังไม่มีรูปภาพครุภัณฑ์</h3>
-      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-        รายการ {assetName} ยังไม่ได้อัปโหลดภาพประกอบ จึงแสดงเฉพาะข้อมูลรายละเอียดและสถานะการใช้งาน
-      </p>
+      <h3 className="mt-4 text-base font-semibold">{title}</h3>
+      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -167,6 +179,7 @@ export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { locale, t } = useI18n();
   const [asset, setAsset] = useState<AssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInlineEditor, setShowInlineEditor] = useState(false);
@@ -180,20 +193,10 @@ export default function AssetDetailPage() {
       setLoading(true);
 
       try {
-        const response = await fetch(`/api/assets/${id}`);
-        const result = (await response.json()) as
-          | { success: true; data: AssetDetail }
-          | { success: false; error?: { message?: string } };
-
-        if (!result.success) {
-          toast.error(result.error?.message ?? "ไม่สามารถโหลดข้อมูลครุภัณฑ์ได้");
-          setAsset(null);
-          return;
-        }
-
-        setAsset(result.data);
-      } catch {
-        toast.error("เกิดข้อผิดพลาดระหว่างโหลดข้อมูลครุภัณฑ์");
+        const data = await apiClient.get<AssetDetail>(`/api/assets/${id}`);
+        setAsset(data);
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, t("assetDetail.loadError")));
         setAsset(null);
       } finally {
         setLoading(false);
@@ -201,7 +204,7 @@ export default function AssetDetailPage() {
     }
 
     void loadAsset();
-  }, [id]);
+  }, [id, t]);
 
   const stockRatio = useMemo(() => {
     if (!asset || asset.totalQty === 0) {
@@ -269,15 +272,10 @@ export default function AssetDetailPage() {
     return (
       <div className="app-page">
         <div className="empty-state">
-          <h1 className="text-xl font-semibold">ไม่พบครุภัณฑ์</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            รายการที่ต้องการอาจถูกลบหรือไม่มีอยู่ในระบบ
-          </p>
-          <Link
-            href="/assets"
-            className={cn(buttonVariants({ variant: "outline" }), "mt-5")}
-          >
-            กลับไปหน้ารายการ
+          <h1 className="text-xl font-semibold">{t("assetDetail.notFound.title")}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t("assetDetail.notFound.description")}</p>
+          <Link href="/assets" className={cn(buttonVariants({ variant: "outline" }), "mt-5")}>
+            {t("assetDetail.actions.backToAssets")}
           </Link>
         </div>
       </div>
@@ -295,24 +293,16 @@ export default function AssetDetailPage() {
     setDeleting(true);
 
     try {
-      const response = await fetch(`/api/assets/${asset.id}`, {
-        method: "DELETE",
+      await apiClient.delete<void>(`/api/assets/${asset.id}`, {
+        parseAs: "void",
       });
-      const result = (await response.json()) as
-        | { success: true; data: { id: number } }
-        | { success: false; error?: { message?: string } };
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to delete this asset.");
-        return;
-      }
 
       setDeleteDialogOpen(false);
-      toast.success("Asset deleted.");
+      toast.success(t("assetDetail.deleted"));
       router.replace("/assets");
       router.refresh();
-    } catch {
-      toast.error("An unexpected error occurred while deleting the asset.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t("assetDetail.deleteError")));
     } finally {
       setDeleting(false);
     }
@@ -328,14 +318,16 @@ export default function AssetDetailPage() {
             onClick={() => setShowInlineEditor((current) => !current)}
           >
             <PencilLine className="size-4" />
-            {showInlineEditor ? "ซ่อนฟอร์มแก้ไข" : "แก้ไขแบบด่วน"}
+            {showInlineEditor
+              ? t("assetDetail.actions.hideQuickEdit")
+              : t("assetDetail.actions.quickEdit")}
           </button>
           <Link
             href={`/assets/${asset.id}/edit`}
             className={cn(buttonVariants({ variant: "ghost" }), "gap-2")}
           >
             <PencilLine className="size-4" />
-            เปิดหน้าแก้ไขเต็ม
+            {t("assetDetail.actions.openFullEditPage")}
           </Link>
           <Button
             type="button"
@@ -344,7 +336,7 @@ export default function AssetDetailPage() {
             className="gap-2"
           >
             <Trash2 className="size-4" />
-            Delete asset
+            {t("assetDetail.actions.deleteAsset")}
           </Button>
         </>
       ) : null}
@@ -354,7 +346,7 @@ export default function AssetDetailPage() {
           className={cn(buttonVariants({ variant: "default" }), "gap-2")}
         >
           <ClipboardList className="size-4" />
-          ยืมครุภัณฑ์
+          {t("assetDetail.actions.borrowAsset")}
         </Link>
       ) : null}
     </>
@@ -367,16 +359,14 @@ export default function AssetDetailPage() {
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit gap-2")}
       >
         <ArrowLeft className="size-4" />
-        กลับไปหน้ารายการครุภัณฑ์
+        {t("assetDetail.actions.backToAssets")}
       </Link>
 
       <section className="surface-panel overflow-hidden">
         <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="surface-section border-b xl:border-b-0 xl:border-r">
             <div className="flex flex-col gap-6">
-              {hasActions ? (
-                <div className="flex flex-col gap-4 xl:hidden">{actionButtons}</div>
-              ) : null}
+              {hasActions ? <div className="flex flex-col gap-4 xl:hidden">{actionButtons}</div> : null}
 
               <div className="space-y-4">
                 <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -390,7 +380,7 @@ export default function AssetDetailPage() {
                     {asset.name}
                   </h1>
                   <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {asset.description ?? "ไม่มีรายละเอียดเพิ่มเติมสำหรับครุภัณฑ์รายการนี้"}
+                    {asset.description ?? t("assetDetail.fallbackDescription")}
                   </p>
                 </div>
                 <StatusBadge type="asset" value={asset.status} className="w-fit" />
@@ -398,25 +388,25 @@ export default function AssetDetailPage() {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <SummaryMetric
-                  label="พร้อมใช้งาน"
+                  label={t("assetDetail.summary.availableLabel")}
                   value={formatAssetQuantity(asset.availableQty)}
-                  helper="จำนวนที่เบิกใช้ได้ทันที"
+                  helper={t("assetDetail.summary.availableHelper")}
                 />
                 <SummaryMetric
-                  label="กำลังถูกใช้งาน"
+                  label={t("assetDetail.summary.inUseLabel")}
                   value={formatAssetQuantity(unavailableQty)}
-                  helper="กำลังอยู่ระหว่างยืมหรือไม่พร้อมใช้งาน"
+                  helper={t("assetDetail.summary.inUseHelper")}
                 />
                 <SummaryMetric
-                  label="จำนวนทั้งหมด"
+                  label={t("assetDetail.summary.totalLabel")}
                   value={formatAssetQuantity(asset.totalQty)}
-                  helper="ยอดคงคลังรวมของรายการนี้"
+                  helper={t("assetDetail.summary.totalHelper")}
                 />
                 {canManage ? (
                   <SummaryMetric
-                    label="Borrowed"
+                    label={t("assetDetail.summary.borrowedLabel")}
                     value={formatAssetQuantity(borrowInsights?.totalBorrowCount ?? 0)}
-                    helper="Approved borrow events recorded for this asset."
+                    helper={t("assetDetail.summary.borrowedHelper")}
                   />
                 ) : null}
               </div>
@@ -424,21 +414,19 @@ export default function AssetDetailPage() {
           </div>
 
           <aside className="surface-section flex flex-col gap-5 bg-muted/18">
-            {hasActions ? (
-              <div className="hidden xl:grid xl:gap-2">{actionButtons}</div>
-            ) : null}
+            {hasActions ? <div className="hidden xl:grid xl:gap-2">{actionButtons}</div> : null}
 
             <div className="rounded-sm border border-border/80 bg-card px-4 py-4">
               <p className="text-xs font-medium tracking-wide text-muted-foreground">
-                อัตราพร้อมใช้งาน
+                {t("assetDetail.availability.title")}
               </p>
               <div className="mt-2 flex items-end justify-between gap-3">
-                <p className="text-3xl font-semibold tracking-tight tabular-nums">
-                  {stockRatio}%
-                </p>
+                <p className="text-3xl font-semibold tracking-tight tabular-nums">{stockRatio}%</p>
                 <p className="text-right text-xs leading-5 text-muted-foreground">
-                  พร้อมใช้งาน {formatAssetQuantity(asset.availableQty)} จาก{" "}
-                  {formatAssetQuantity(asset.totalQty)}
+                  {t("assetDetail.availability.readyToUse", {
+                    available: formatAssetQuantity(asset.availableQty),
+                    total: formatAssetQuantity(asset.totalQty),
+                  })}
                 </p>
               </div>
               <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-muted">
@@ -452,68 +440,73 @@ export default function AssetDetailPage() {
 
             <div className="rounded-sm border border-border/80 bg-card px-4 py-4">
               <p className="text-xs font-medium tracking-wide text-muted-foreground">
-                สรุปข้อมูลย่อ
+                {t("assetDetail.quickSummary.title")}
               </p>
               <dl className="mt-3 space-y-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
-                  <dt className="text-muted-foreground">หมวดหมู่</dt>
-                  <dd className="text-right font-medium">{asset.category ?? "-"}</dd>
+                  <dt className="text-muted-foreground">{t("assetDetail.quickSummary.category")}</dt>
+                  <dd className="text-right font-medium">
+                    {asset.category ?? t("common.placeholders.uncategorized")}
+                  </dd>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <dt className="text-muted-foreground">สถานที่จัดเก็บ</dt>
-                  <dd className="text-right font-medium">{asset.location ?? "-"}</dd>
+                  <dt className="text-muted-foreground">{t("assetDetail.quickSummary.location")}</dt>
+                  <dd className="text-right font-medium">
+                    {asset.location ?? t("common.placeholders.unspecifiedLocation")}
+                  </dd>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <dt className="text-muted-foreground">อัปเดตล่าสุด</dt>
-                  <dd className="text-right font-medium">{formatDateTime(asset.updatedAt)}</dd>
+                  <dt className="text-muted-foreground">{t("assetDetail.quickSummary.updatedAt")}</dt>
+                  <dd className="text-right font-medium">{formatDateTime(asset.updatedAt, locale)}</dd>
                 </div>
               </dl>
             </div>
+
             {canManage ? (
               <div className="rounded-sm border border-border/80 bg-card px-4 py-4">
                 <p className="text-xs font-medium tracking-wide text-muted-foreground">
-                  Borrowing insight
+                  {t("assetDetail.insight.title")}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  How often this asset has been issued and who borrowed it.
+                  {t("assetDetail.insight.description")}
                 </p>
 
                 {borrowInsights?.hasHistory ? (
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                     <InsightMetric
-                      label="Borrow count"
+                      label={t("assetDetail.insight.borrowCountLabel")}
                       value={formatAssetQuantity(borrowInsights.totalBorrowCount)}
-                      helper="Approved borrow events recorded for this asset."
+                      helper={t("assetDetail.insight.borrowCountHelper")}
                     />
                     <InsightMetric
-                      label="Units borrowed"
+                      label={t("assetDetail.insight.unitsBorrowedLabel")}
                       value={formatAssetQuantity(borrowInsights.totalBorrowedQty)}
-                      helper="Total quantity issued across all borrow events."
+                      helper={t("assetDetail.insight.unitsBorrowedHelper")}
                     />
                     <InsightMetric
-                      label="Unique borrowers"
+                      label={t("assetDetail.insight.uniqueBorrowersLabel")}
                       value={formatAssetQuantity(borrowInsights.uniqueBorrowerCount)}
-                      helper="Distinct borrower names found in the history."
+                      helper={t("assetDetail.insight.uniqueBorrowersHelper")}
                     />
                     <InsightMetric
-                      label="Last borrowed"
+                      label={t("assetDetail.insight.lastBorrowedLabel")}
                       value={
                         borrowInsights.latestBorrow
-                          ? formatDateTime(borrowInsights.latestBorrow.occurredAt)
+                          ? formatDateTime(borrowInsights.latestBorrow.occurredAt, locale)
                           : "-"
                       }
                       helper={
                         borrowInsights.latestBorrow
                           ? `${borrowInsights.latestBorrow.borrowerName} · ${borrowInsights.latestBorrow.requestNo}`
-                          : "No recent borrow event."
+                          : t("assetDetail.insight.noRecentBorrowEvent")
                       }
                     />
                   </div>
                 ) : (
                   <div className="mt-4 rounded-sm border border-dashed border-border/80 bg-muted/20 px-4 py-5">
-                    <p className="text-sm font-medium">No borrow history yet</p>
+                    <p className="text-sm font-medium">{t("assetDetail.insight.noHistoryTitle")}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      This asset has not been approved in any borrow request so far.
+                      {t("assetDetail.insight.noHistoryDescription")}
                     </p>
                   </div>
                 )}
@@ -526,12 +519,12 @@ export default function AssetDetailPage() {
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <div className="surface-panel overflow-hidden">
           <SectionHeading
-            title="ภาพประกอบ"
-            description="ตรวจสอบภาพของครุภัณฑ์เพื่อยืนยันสภาพและอุปกรณ์ที่แนบมากับรายการ"
+            title={t("assetDetail.images.title")}
+            description={t("assetDetail.images.description")}
             trailing={
               asset.images.length > 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {asset.images.length} ภาพ
+                  {t("assetDetail.images.count", { count: asset.images.length })}
                 </p>
               ) : null
             }
@@ -540,7 +533,12 @@ export default function AssetDetailPage() {
             {asset.images.length > 0 ? (
               <AssetImageGallery assetName={asset.name} images={asset.images} />
             ) : (
-              <EmptyImageState assetName={asset.name} />
+              <EmptyImageState
+                title={t("assetDetail.emptyImages.title")}
+                description={t("assetDetail.emptyImages.description", {
+                  assetName: asset.name,
+                })}
+              />
             )}
           </div>
         </div>
@@ -548,48 +546,64 @@ export default function AssetDetailPage() {
         <div className="space-y-6">
           <section className="surface-panel overflow-hidden">
             <SectionHeading
-              title="ข้อมูลครุภัณฑ์"
-              description="รายละเอียดหลักที่ใช้สำหรับอ้างอิงรายการและติดตามสถานะในระบบ"
+              title={t("assetDetail.info.title")}
+              description={t("assetDetail.info.description")}
             />
             <div className="grid gap-4 px-6 py-6 sm:grid-cols-2">
-              <DetailField label="รหัสครุภัณฑ์" value={asset.assetCode} />
+              <DetailField label={t("assetDetail.info.assetCode")} value={asset.assetCode} />
               <DetailField
-                label="สถานะปัจจุบัน"
+                label={t("assetDetail.info.currentStatus")}
                 value={<StatusBadge type="asset" value={asset.status} className="w-fit" />}
               />
-              <DetailField label="หมวดหมู่" value={asset.category ?? "-"} />
-              <DetailField label="สถานที่จัดเก็บ" value={asset.location ?? "-"} />
               <DetailField
-                label="สร้างเมื่อ"
-                value={formatDateTime(asset.createdAt)}
-                helper="วันที่สร้างรายการในระบบ"
+                label={t("assetDetail.info.category")}
+                value={asset.category ?? t("common.placeholders.uncategorized")}
               />
               <DetailField
-                label="อัปเดตล่าสุด"
-                value={formatDateTime(asset.updatedAt)}
-                helper="เวลาที่แก้ไขข้อมูลครั้งล่าสุด"
+                label={t("assetDetail.info.location")}
+                value={asset.location ?? t("common.placeholders.unspecifiedLocation")}
+              />
+              <DetailField
+                label={t("assetDetail.info.createdAt")}
+                value={formatDateTime(asset.createdAt, locale)}
+                helper={t("assetDetail.info.createdAtHelper")}
+              />
+              <DetailField
+                label={t("assetDetail.info.updatedAt")}
+                value={formatDateTime(asset.updatedAt, locale)}
+                helper={t("assetDetail.info.updatedAtHelper")}
               />
             </div>
           </section>
 
           <section className="surface-panel overflow-hidden">
             <SectionHeading
-              title="ข้อมูลการเงิน"
-              description="ข้อมูลราคาซื้อและค่าเสื่อมสำหรับการติดตามมูลค่าครุภัณฑ์"
+              title={t("assetDetail.financial.title")}
+              description={t("assetDetail.financial.description")}
             />
             <div className="grid gap-4 px-6 py-6 sm:grid-cols-2">
-              <DetailField label="ราคาซื้อ" value={formatBaht(asset.purchasePrice)} />
               <DetailField
-                label="วันที่เริ่มใช้งาน"
-                value={asset.purchaseDate ? formatDate(asset.purchaseDate) : "-"}
+                label={t("assetDetail.financial.purchasePrice")}
+                value={formatBaht(asset.purchasePrice, locale, t("assetDetail.currency.baht"))}
               />
               <DetailField
-                label="อายุการใช้งาน"
+                label={t("assetDetail.financial.purchaseDate")}
+                value={asset.purchaseDate ? formatDate(asset.purchaseDate, locale) : "-"}
+              />
+              <DetailField
+                label={t("assetDetail.financial.usefulLife")}
                 value={
-                  asset.usefulLifeYears ? `${formatAssetQuantity(asset.usefulLifeYears)} ปี` : "-"
+                  asset.usefulLifeYears
+                    ? t("assetDetail.financial.usefulLifeValue", {
+                        years: formatAssetQuantity(asset.usefulLifeYears),
+                      })
+                    : "-"
                 }
               />
-              <DetailField label="มูลค่าซาก" value={formatBaht(asset.residualValue)} />
+              <DetailField
+                label={t("assetDetail.financial.residualValue")}
+                value={formatBaht(asset.residualValue, locale, t("assetDetail.currency.baht"))}
+              />
             </div>
           </section>
         </div>
@@ -607,81 +621,81 @@ export default function AssetDetailPage() {
       {canManage && showInlineEditor ? (
         <section className="surface-panel overflow-hidden">
           <SectionHeading
-            title="แก้ไขข้อมูลแบบด่วน"
-            description="ปรับข้อมูลหลักของครุภัณฑ์ได้ทันทีโดยไม่ต้องออกจากหน้า detail"
+            title={t("assetDetail.quickEdit.title")}
+            description={t("assetDetail.quickEdit.description")}
           />
           <div className="px-6 py-6">
-            <AssetForm
-              mode="edit"
-              asset={asset}
-              initialValues={toAssetFormValues(asset)}
-            />
+            <AssetForm mode="edit" asset={asset} initialValues={toAssetFormValues(asset)} />
           </div>
         </section>
       ) : null}
 
       {canManage ? (
         <section className="table-shell">
-        <SectionHeading
-          title="ประวัติการยืม-คืน"
-          description="ไทม์ไลน์การเบิกใช้งานและการคืนของครุภัณฑ์รายการนี้"
-          trailing={
-            asset.activity.length > 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {asset.activity.length} รายการ
-              </p>
-            ) : null
-          }
-        />
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>เมื่อ</TableHead>
-                <TableHead>ประเภท</TableHead>
-                <TableHead>คำขออ้างอิง</TableHead>
-                <TableHead>ผู้ยืม</TableHead>
-                <TableHead className="text-center">จำนวน</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead>หมายเหตุ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {asset.activity.length === 0 ? (
+          <SectionHeading
+            title={t("assetDetail.history.title")}
+            description={t("assetDetail.history.description")}
+            trailing={
+              asset.activity.length > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("assetDetail.history.count", { count: asset.activity.length })}
+                </p>
+              ) : null
+            }
+          />
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-12 text-center text-sm text-muted-foreground"
-                  >
-                    ยังไม่มีประวัติการยืม-คืนสำหรับครุภัณฑ์รายการนี้
-                  </TableCell>
+                  <TableHead>{t("assetDetail.history.headers.date")}</TableHead>
+                  <TableHead>{t("assetDetail.history.headers.type")}</TableHead>
+                  <TableHead>{t("assetDetail.history.headers.reference")}</TableHead>
+                  <TableHead>{t("assetDetail.history.headers.borrower")}</TableHead>
+                  <TableHead className="text-center">{t("assetDetail.history.headers.qty")}</TableHead>
+                  <TableHead>{t("assetDetail.history.headers.status")}</TableHead>
+                  <TableHead>{t("assetDetail.history.headers.note")}</TableHead>
                 </TableRow>
-              ) : (
-                asset.activity.map((activity) => (
-                  <TableRow key={activity.id}>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDateTime(activity.occurredAt)}
-                    </TableCell>
-                    <TableCell>{activity.type === "borrow" ? "ยืม" : "คืน"}</TableCell>
-                    <TableCell className="font-mono text-sm font-medium">
-                      {activity.requestNo}
-                    </TableCell>
-                    <TableCell>{activity.borrowerName}</TableCell>
-                    <TableCell className="text-center tabular-nums">
-                      {formatAssetQuantity(activity.qty)}
-                    </TableCell>
-                    <TableCell>
-                      <ActivityStatus activity={activity} />
-                    </TableCell>
-                    <TableCell className="max-w-[22rem] text-sm text-muted-foreground">
-                      {activity.note ?? "-"}
+              </TableHeader>
+              <TableBody>
+                {asset.activity.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-12 text-center text-sm text-muted-foreground"
+                    >
+                      {t("assetDetail.history.empty")}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ) : (
+                  asset.activity.map((activity) => (
+                    <TableRow key={activity.id}>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDateTime(activity.occurredAt, locale)}
+                      </TableCell>
+                      <TableCell>
+                        {activity.type === "borrow"
+                          ? t("assetDetail.history.typeBorrow")
+                          : t("assetDetail.history.typeReturn")}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm font-medium">
+                        {activity.requestNo}
+                      </TableCell>
+                      <TableCell>{activity.borrowerName}</TableCell>
+                      <TableCell className="text-center tabular-nums">
+                        {formatAssetQuantity(activity.qty)}
+                      </TableCell>
+                      <TableCell>
+                        <ActivityStatus activity={activity} />
+                      </TableCell>
+                      <TableCell className="max-w-[22rem] text-sm text-muted-foreground">
+                        {activity.note ?? "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </section>
       ) : null}
 
@@ -691,22 +705,23 @@ export default function AssetDetailPage() {
             <AlertDialogMedia className="text-destructive">
               <Trash2 className="size-5" />
             </AlertDialogMedia>
-            <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
+            <AlertDialogTitle>{t("assetDetail.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {asset.assetCode} {asset.name} will be removed permanently, including uploaded
-              images. Deletion is blocked when the asset is already referenced by borrow or
-              return records.
+              {t("assetDetail.deleteDialog.description", {
+                assetCode: asset.assetCode,
+                assetName: asset.name,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Close</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("common.actions.close")}</AlertDialogCancel>
             <Button
               type="button"
               variant="destructive"
               onClick={() => void handleDelete()}
               disabled={deleting}
             >
-              {deleting ? "Deleting..." : "Delete asset"}
+              {deleting ? t("assetDetail.deleteDialog.deleting") : t("assetDetail.actions.deleteAsset")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

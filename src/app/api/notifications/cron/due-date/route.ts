@@ -35,12 +35,13 @@ export const GET = withErrorHandler(async (request: Request) => {
   const { notificationService } = createNotificationStack();
   const requests = await borrowRequestRepository.findManyByDueDate(targetDate, [
     "approved",
+    "partially_approved",
     "partially_returned",
   ]);
 
   await Promise.allSettled(
     requests.map((borrowRequest) =>
-      notificationService.notifyDueDateApproaching(borrowRequest),
+      notificationService.notifyDueDateApproaching(borrowRequest, targetDate),
     ),
   );
 

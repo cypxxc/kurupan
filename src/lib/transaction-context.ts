@@ -6,6 +6,7 @@ import { AssetRepository } from "@/modules/assets/repositories/AssetRepository";
 import { AuditLogRepository } from "@/modules/audit/repositories/AuditLogRepository";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
 import { LocalAuthUserRepository } from "@/modules/auth/repositories/LocalAuthUserRepository";
+import { SessionRepository } from "@/modules/auth/repositories/SessionRepository";
 import { BorrowRequestRepository } from "@/modules/borrow/repositories/BorrowRequestRepository";
 import { ReturnRepository } from "@/modules/returns/repositories/ReturnRepository";
 
@@ -16,6 +17,7 @@ export class TransactionContext {
   private assetRepository?: AssetRepository;
   private returnRepository?: ReturnRepository;
   private localAuthUserRepository?: LocalAuthUserRepository;
+  private sessionRepository?: SessionRepository;
   private userAccessRepository?: UserAccessRepository;
   private auditLogServiceInstance?: AuditLogService;
 
@@ -49,6 +51,11 @@ export class TransactionContext {
   get localAuthUserRepo() {
     this.localAuthUserRepository ??= new LocalAuthUserRepository(this.tx);
     return this.localAuthUserRepository;
+  }
+
+  get sessionRepo() {
+    this.sessionRepository ??= new SessionRepository(this.tx);
+    return this.sessionRepository;
   }
 
   get userAccessRepo() {

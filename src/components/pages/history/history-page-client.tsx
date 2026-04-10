@@ -1,23 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { AuditLogsTable } from "@/components/pages/history/audit-logs-table";
 import {
-  ACTION_OPTIONS,
-  ENTITY_OPTIONS,
+  ACTION_OPTION_VALUES,
+  ENTITY_OPTION_VALUES,
+  getHistoryActionLabelKey,
+  getHistoryEntityLabelKey,
   type ViewMode,
 } from "@/components/pages/history/history-constants";
 import { HistoryEventsTable } from "@/components/pages/history/history-events-table";
 import { HistoryFilterPanel } from "@/components/pages/history/history-filter-panel";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
+import type { PaginatedResult } from "@/lib/pagination";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AuditLogEntry, HistoryEntityType, HistoryEvent } from "@/types/history";
 
+const HISTORY_PAGE_SIZE = 20;
+const AUDIT_LOG_PAGE_SIZE = 20;
+
 export function HistoryPageClient() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>("history");
   const [entityType, setEntityType] = useState<"all" | HistoryEntityType>("all");
@@ -26,6 +35,26 @@ export function HistoryPageClient() {
   const [dateTo, setDateTo] = useState("");
   const [historyItems, setHistoryItems] = useState<HistoryEvent[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
+  const [historyPagination, setHistoryPagination] = useState<PaginatedResult<HistoryEvent>>({
+    items: [],
+    page: 1,
+    limit: HISTORY_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
+  const [auditPagination, setAuditPagination] = useState<PaginatedResult<AuditLogEntry>>({
+    items: [],
+    page: 1,
+    limit: AUDIT_LOG_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingAudit, setLoadingAudit] = useState(true);
 
@@ -53,29 +82,41 @@ export function HistoryPageClient() {
     return params.toString();
   }, [action, dateFrom, dateTo, entityType]);
 
+  useEffect(() => {
+    setHistoryPage(1);
+    setAuditPage(1);
+  }, [queryString]);
+
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
 
     try {
-      const response = await fetch(`/api/history?${queryString}`);
-      const result = (await response.json()) as
-        | { success: true; data: HistoryEvent[] }
-        | { success: false; error?: { message?: string } };
+      const historyQuery = new URLSearchParams(queryString);
+      historyQuery.set("page", String(historyPage));
+      historyQuery.set("limit", String(HISTORY_PAGE_SIZE));
 
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to load history.");
-        setHistoryItems([]);
-        return;
-      }
+      const data = await apiClient.get<PaginatedResult<HistoryEvent>>("/api/history", {
+        query: historyQuery,
+      });
 
-      setHistoryItems(result.data);
-    } catch {
-      toast.error("An error occurred while loading history.");
+      setHistoryItems(data.items);
+      setHistoryPagination(data);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t("history.loadHistoryError")));
       setHistoryItems([]);
+      setHistoryPagination({
+        items: [],
+        page: historyPage,
+        limit: HISTORY_PAGE_SIZE,
+        total: 0,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      });
     } finally {
       setLoadingHistory(false);
     }
-  }, [queryString]);
+  }, [historyPage, queryString, t]);
 
   const fetchAuditLogs = useCallback(async () => {
     if (!canManageAudit) {
@@ -87,56 +128,81 @@ export function HistoryPageClient() {
     setLoadingAudit(true);
 
     try {
-      const response = await fetch(`/api/audit-logs?${queryString}`);
-      const result = (await response.json()) as
-        | { success: true; data: AuditLogEntry[] }
-        | { success: false; error?: { message?: string } };
+      const auditQuery = new URLSearchParams(queryString);
+      auditQuery.set("page", String(auditPage));
+      auditQuery.set("limit", String(AUDIT_LOG_PAGE_SIZE));
 
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to load audit logs.");
-        setAuditLogs([]);
-        return;
-      }
+      const data = await apiClient.get<PaginatedResult<AuditLogEntry>>("/api/audit-logs", {
+        query: auditQuery,
+      });
 
-      setAuditLogs(result.data);
-    } catch {
-      toast.error("An error occurred while loading audit logs.");
+      setAuditLogs(data.items);
+      setAuditPagination(data);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t("history.loadAuditError")));
       setAuditLogs([]);
+      setAuditPagination({
+        items: [],
+        page: auditPage,
+        limit: AUDIT_LOG_PAGE_SIZE,
+        total: 0,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      });
     } finally {
       setLoadingAudit(false);
     }
-  }, [canManageAudit, queryString]);
+  }, [auditPage, canManageAudit, queryString, t]);
 
   useEffect(() => {
     void fetchHistory();
     void fetchAuditLogs();
   }, [fetchAuditLogs, fetchHistory]);
 
+  const entityOptions = useMemo(
+    () =>
+      ENTITY_OPTION_VALUES.map((value) => ({
+        value,
+        label: t(getHistoryEntityLabelKey(value)),
+      })),
+    [t],
+  );
+
+  const actionOptions = useMemo(
+    () =>
+      ACTION_OPTION_VALUES.map((value) => ({
+        value,
+        label: t(getHistoryActionLabelKey(value)),
+      })),
+    [t],
+  );
+
   const visibleEntityOptions = useMemo(() => {
     if (canManageAudit) {
-      return ENTITY_OPTIONS;
+      return entityOptions;
     }
 
-    return ENTITY_OPTIONS.filter(
+    return entityOptions.filter(
       (option) =>
         option.value === "all" ||
         option.value === "borrow_request" ||
         option.value === "return_transaction",
     );
-  }, [canManageAudit]);
+  }, [canManageAudit, entityOptions]);
 
   const visibleActionOptions = useMemo(() => {
     if (canManageAudit) {
-      return ACTION_OPTIONS;
+      return actionOptions;
     }
 
-    return ACTION_OPTIONS.filter(
+    return actionOptions.filter(
       (option) =>
         option.value === "all" ||
         option.value.startsWith("borrow_request.") ||
         option.value.startsWith("return."),
     );
-  }, [canManageAudit]);
+  }, [actionOptions, canManageAudit]);
 
   if (!user) {
     return (
@@ -144,7 +210,7 @@ export function HistoryPageClient() {
         <div className="mx-auto flex size-14 items-center justify-center rounded-sm border border-border bg-muted/55 text-muted-foreground">
           <ShieldAlert className="size-6" />
         </div>
-        <h1 className="mt-4 text-xl font-semibold">Unable to load user session</h1>
+        <h1 className="mt-4 text-xl font-semibold">{t("history.sessionError")}</h1>
       </div>
     );
   }
@@ -153,13 +219,11 @@ export function HistoryPageClient() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">History and Audit</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("history.eyebrow")}</p>
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Activity history</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">{t("history.title")}</h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              {canManageAudit
-                ? "Review system activity and audit logs for administrative changes."
-                : "Review your borrow and return activity history."}
+              {canManageAudit ? t("history.descriptionAdmin") : t("history.descriptionBorrower")}
             </p>
           </div>
         </div>
@@ -176,7 +240,7 @@ export function HistoryPageClient() {
               )}
               onClick={() => setViewMode("history")}
             >
-              History
+              {t("history.tabs.history")}
             </button>
             <button
               type="button"
@@ -188,7 +252,7 @@ export function HistoryPageClient() {
               )}
               onClick={() => setViewMode("audit")}
             >
-              Audit logs
+              {t("history.tabs.audit")}
             </button>
           </div>
         ) : null}
@@ -209,15 +273,28 @@ export function HistoryPageClient() {
 
       {viewMode === "history" || !canManageAudit ? (
         <HistoryEventsTable
-          title={canManageAudit ? "System events" : "My history"}
-          description="Events visible to the current user under the selected filters."
+          title={canManageAudit ? t("history.events.systemTitle") : t("history.events.myTitle")}
+          description={t("history.events.description")}
           items={historyItems}
           loading={loadingHistory}
+          page={historyPagination.page}
+          limit={historyPagination.limit}
+          total={historyPagination.total}
+          totalPages={historyPagination.totalPages}
+          onPageChange={setHistoryPage}
         />
       ) : null}
 
       {canManageAudit && viewMode === "audit" ? (
-        <AuditLogsTable items={auditLogs} loading={loadingAudit} />
+        <AuditLogsTable
+          items={auditLogs}
+          loading={loadingAudit}
+          page={auditPagination.page}
+          limit={auditPagination.limit}
+          total={auditPagination.total}
+          totalPages={auditPagination.totalPages}
+          onPageChange={setAuditPage}
+        />
       ) : null}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { History } from "lucide-react";
 
+import { useI18n } from "@/components/providers/i18n-provider";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import type { HistoryEntityType } from "@/types/history";
@@ -31,11 +32,13 @@ export function HistoryFilterPanel({
   onDateFromChange,
   onDateToChange,
 }: HistoryFilterPanelProps) {
+  const { t } = useI18n();
+
   return (
     <section className="filter-shell">
       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <History className="size-4" />
-        Filters
+        {t("history.filters.title")}
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Combobox
@@ -45,7 +48,7 @@ export function HistoryFilterPanel({
             value: option.value,
             label: option.label,
           }))}
-          placeholder="All entities"
+          placeholder={t("history.filters.allEntities")}
         />
 
         <Combobox
@@ -55,7 +58,7 @@ export function HistoryFilterPanel({
             value: option.value,
             label: option.label,
           }))}
-          placeholder="All actions"
+          placeholder={t("history.filters.allActions")}
         />
 
         <Input type="date" value={dateFrom} onChange={(event) => onDateFromChange(event.target.value)} />

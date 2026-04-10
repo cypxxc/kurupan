@@ -1,13 +1,38 @@
 import { logger } from "@/lib/logger";
 import { requireCurrentActor } from "@/lib/http/request-context";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
-import { subscribe, type NotificationSSEPayload } from "@/lib/sse/notification-subscribers";
+import { consumeRateLimit, getRequestClientIp } from "@/lib/security/rate-limit";
+import { TooManyRequestsError } from "@/lib/errors";
+import {
+  countSubscribers,
+  subscribe,
+  type NotificationSSEPayload,
+} from "@/lib/sse/notification-subscribers";
 import { createNotificationStack } from "@/modules/notifications/createNotificationStack";
 
 export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandler(async (request: Request) => {
   const actor = await requireCurrentActor(request);
+  const ip = getRequestClientIp(request);
+  const rateLimit = consumeRateLimit(`notifications:sse:${actor.externalUserId}:${ip}`, {
+    limit: 12,
+    windowMs: 60 * 1000,
+  });
+
+  if (!rateLimit.allowed) {
+    throw new TooManyRequestsError(
+      "Too many notification stream requests. Please try again later.",
+      {
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
+    );
+  }
+
+  if (countSubscribers(actor.externalUserId) >= 3) {
+    throw new TooManyRequestsError("Too many active notification streams for this account.");
+  }
+
   const { notificationService } = createNotificationStack();
   const encoder = new TextEncoder();
 

@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import type { ReturnTransaction } from "@/types/returns";
@@ -37,20 +38,10 @@ export default function ReturnsPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/returns");
-      const result = (await response.json()) as
-        | { success: true; data: ReturnTransaction[] }
-        | { success: false; error?: { message?: string } };
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "ไม่สามารถโหลดรายการคืนได้");
-        setReturns([]);
-        return;
-      }
-
-      setReturns(result.data);
-    } catch {
-      toast.error("เกิดข้อผิดพลาดระหว่างโหลดรายการคืน");
+      const data = await apiClient.get<ReturnTransaction[]>("/api/returns");
+      setReturns(data);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "เกิดข้อผิดพลาดระหว่างโหลดรายการคืน"));
       setReturns([]);
     } finally {
       setLoading(false);

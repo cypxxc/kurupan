@@ -1,5 +1,7 @@
 import { PackageCheck } from "lucide-react";
 
+import { useI18n } from "@/components/providers/i18n-provider";
+
 type ReturnSummarySidebarProps = {
   eligibleRequestCount: number;
   activeItemCount: number;
@@ -13,23 +15,25 @@ export function ReturnSummarySidebar({
   totalQty,
   loadingRequests,
 }: ReturnSummarySidebarProps) {
+  const { t } = useI18n();
+
   return (
     <aside className="space-y-4">
       <div className="surface-panel surface-section">
-        <p className="text-sm font-medium text-muted-foreground">Return summary</p>
+        <p className="text-sm font-medium text-muted-foreground">{t("returnsNew.labels.summary")}</p>
         <div className="mt-4 grid gap-3">
           <div className="rounded-sm border border-border/80 bg-muted/55 px-4 py-3">
-            <p className="text-xs text-muted-foreground">Eligible requests</p>
+            <p className="text-xs text-muted-foreground">{t("returnsNew.labels.eligibleRequests")}</p>
             <p className="mt-1 text-2xl font-semibold">
               {loadingRequests ? "-" : eligibleRequestCount}
             </p>
           </div>
           <div className="rounded-sm border border-border/80 bg-muted/55 px-4 py-3">
-            <p className="text-xs text-muted-foreground">Selected items</p>
+            <p className="text-xs text-muted-foreground">{t("returnsNew.labels.selectedItems")}</p>
             <p className="mt-1 text-2xl font-semibold">{activeItemCount}</p>
           </div>
           <div className="rounded-sm border border-border/80 bg-muted/55 px-4 py-3">
-            <p className="text-xs text-muted-foreground">Total units returned now</p>
+            <p className="text-xs text-muted-foreground">{t("returnsNew.labels.totalQty")}</p>
             <p className="mt-1 text-2xl font-semibold">{totalQty}</p>
           </div>
         </div>
@@ -38,12 +42,12 @@ export function ReturnSummarySidebar({
       <div className="surface-panel surface-section">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <PackageCheck className="size-4" />
-          Return guidelines
+          {t("returnsNew.labels.guidelines")}
         </div>
         <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
-          <li>Only approved or partially returned requests can be processed here.</li>
-          <li>Partial returns are supported by selecting only the items brought back now.</li>
-          <li>Items marked as lost will not be added back to available stock.</li>
+          <li>{t("returnsNew.guidelines.approvedOnly")}</li>
+          <li>{t("returnsNew.guidelines.partial")}</li>
+          <li>{t("returnsNew.guidelines.lost")}</li>
         </ul>
       </div>
     </aside>

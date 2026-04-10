@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { AssetCodeSeriesForm } from "@/components/forms/asset-code-series-form";
 import { buttonVariants } from "@/components/ui/button";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import type { AssetCodeSeries } from "@/types/asset-code-series";
@@ -30,20 +31,10 @@ export default function EditAssetCodeSeriesPage() {
       setLoading(true);
 
       try {
-        const response = await fetch(`/api/asset-code-series/${id}`);
-        const result = (await response.json()) as
-          | { success: true; data: AssetCodeSeries }
-          | { success: false; error?: { message?: string } };
-
-        if (!result.success) {
-          toast.error(result.error?.message ?? "ไม่สามารถโหลดชุดรหัสได้");
-          setSeries(null);
-          return;
-        }
-
-        setSeries(result.data);
-      } catch {
-        toast.error("เกิดข้อผิดพลาดระหว่างโหลดชุดรหัส");
+        const data = await apiClient.get<AssetCodeSeries>(`/api/asset-code-series/${id}`);
+        setSeries(data);
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "Unable to load asset code series."));
         setSeries(null);
       } finally {
         setLoading(false);
@@ -59,12 +50,12 @@ export default function EditAssetCodeSeriesPage() {
         <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
           <ShieldAlert className="size-6" />
         </div>
-        <h1 className="mt-4 text-xl font-semibold">ไม่มีสิทธิ์แก้ไขชุดรหัส</h1>
+        <h1 className="mt-4 text-xl font-semibold">You do not have access to edit code series.</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          หน้านี้สำหรับเจ้าหน้าที่และผู้ดูแลระบบเท่านั้น
+          This page is only available to staff and administrators.
         </p>
         <Link href="/assets/series" className={cn(buttonVariants({ variant: "outline" }), "mt-5")}>
-          กลับหน้าจัดการชุดรหัส
+          Back to code series
         </Link>
       </div>
     );
@@ -82,12 +73,12 @@ export default function EditAssetCodeSeriesPage() {
   if (!series) {
     return (
       <div className="rounded-3xl border bg-card px-6 py-14 text-center">
-        <h1 className="text-xl font-semibold">ไม่พบชุดรหัสที่ต้องการแก้ไข</h1>
+        <h1 className="text-xl font-semibold">Code series not found.</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          กรุณาตรวจสอบรายการแล้วลองใหม่อีกครั้ง
+          Check the selected record and try again.
         </p>
         <Link href="/assets/series" className={cn(buttonVariants({ variant: "outline" }), "mt-5")}>
-          กลับหน้าจัดการชุดรหัส
+          Back to code series
         </Link>
       </div>
     );
@@ -100,7 +91,7 @@ export default function EditAssetCodeSeriesPage() {
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit gap-2")}
       >
         <ArrowLeft className="size-4" />
-        กลับหน้าจัดการชุดรหัส
+        Back to code series
       </Link>
 
       <AssetCodeSeriesForm mode="edit" series={series} />

@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgEnum, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 export const notificationTypeEnum = pgEnum("notification_type", [
   "borrow_request_created",
@@ -20,6 +20,7 @@ export const notifications = pgTable(
     body: text("body").notNull(),
     entityType: varchar("entity_type", { length: 64 }),
     entityId: varchar("entity_id", { length: 64 }),
+    dedupeKey: varchar("dedupe_key", { length: 255 }),
     isRead: boolean("is_read").notNull().default(false),
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -27,5 +28,10 @@ export const notifications = pgTable(
   (table) => [
     index("notifications_recipient_idx").on(table.recipientExternalUserId),
     index("notifications_recipient_unread_idx").on(table.recipientExternalUserId, table.isRead),
+    uniqueIndex("notifications_recipient_type_dedupe_idx").on(
+      table.recipientExternalUserId,
+      table.type,
+      table.dedupeKey,
+    ),
   ],
 );

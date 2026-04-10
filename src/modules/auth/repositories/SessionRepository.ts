@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, gt } from "drizzle-orm";
 
-import { getDb } from "@/db/postgres";
+import { getDb, type DbExecutor } from "@/db/postgres";
 import { sessions } from "@/db/schema";
 import type { Role, SessionRecord } from "@/types/auth";
 
 export class SessionRepository {
+  constructor(private readonly db: DbExecutor = getDb()) {}
+
   async create(params: {
     externalUserId: string;
     effectiveRole: Role;
@@ -16,7 +18,7 @@ export class SessionRepository {
     department?: string | null;
     expiresAt: Date;
   }): Promise<SessionRecord> {
-    const [session] = await getDb()
+    const [session] = await this.db
       .insert(sessions)
       .values({
         id: randomUUID(),
@@ -34,7 +36,7 @@ export class SessionRepository {
   }
 
   async findValidById(sessionId: string) {
-    const [session] = await getDb()
+    const [session] = await this.db
       .select()
       .from(sessions)
       .where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, new Date())))
@@ -44,7 +46,7 @@ export class SessionRepository {
   }
 
   async findById(sessionId: string) {
-    const [session] = await getDb()
+    const [session] = await this.db
       .select()
       .from(sessions)
       .where(eq(sessions.id, sessionId))
@@ -54,13 +56,13 @@ export class SessionRepository {
   }
 
   async updateEffectiveRole(sessionId: string, role: Role) {
-    await getDb()
+    await this.db
       .update(sessions)
       .set({ effectiveRole: role })
       .where(eq(sessions.id, sessionId));
   }
 
   async deleteById(sessionId: string) {
-    await getDb().delete(sessions).where(eq(sessions.id, sessionId));
+    await this.db.delete(sessions).where(eq(sessions.id, sessionId));
   }
 }

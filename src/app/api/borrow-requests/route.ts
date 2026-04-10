@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { successResponse } from "@/lib/http/response";
 import { requireCurrentActor } from "@/lib/http/request-context";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
+import { hasPaginationQuery } from "@/lib/pagination";
 import {
   borrowRequestCreateSchema,
   borrowRequestListQuerySchema,
@@ -14,7 +15,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const actor = await requireCurrentActor(request);
   const filters = parseSearchParams(request, borrowRequestListQuerySchema);
   const { borrowRequestService } = createBorrowStack();
-  const borrowRequests = await borrowRequestService.listBorrowRequests(actor, filters);
+  const borrowRequests = hasPaginationQuery(filters)
+    ? await borrowRequestService.listBorrowRequestPage(actor, filters)
+    : await borrowRequestService.listBorrowRequests(actor, filters);
 
   return successResponse(borrowRequests);
 });

@@ -1,9 +1,11 @@
 import { withTransactionContext } from "@/db/postgres";
 import {
+  AuthorizationError,
   ConflictError,
   InsufficientStockError,
   NotFoundError,
 } from "@/lib/errors";
+import type { PaginatedResult } from "@/lib/pagination";
 import type {
   BorrowRequestCancelInput,
   BorrowRequestRejectInput,
@@ -31,7 +33,11 @@ import {
 import {
   assertAssetsCanBeBorrowed,
   buildBorrowRequestNo,
+  getRemainingItemsForFollowUp,
+  getRestockItemsForCancellation,
+  resolveApprovalStatus,
   resolveApprovedItems,
+  shouldNotifyBorrowerOfCancellation,
 } from "./borrow-request-service.helpers";
 
 export class BorrowRequestService {
@@ -53,6 +59,19 @@ export class BorrowRequestService {
     });
   }
 
+  async listBorrowRequestPage(
+    actor: ActorContext,
+    filters: BorrowRequestListQuery,
+  ): Promise<PaginatedResult<BorrowRequestDetail>> {
+    const borrowerExternalUserId =
+      actor.role === "borrower" ? actor.externalUserId : filters.borrower;
+
+    return this.borrowRequestRepository.findPage({
+      ...filters,
+      borrowerExternalUserId,
+    });
+  }
+
   async getBorrowRequestById(actor: ActorContext, id: number) {
     const request = await this.borrowRequestRepository.findById(id);
 
@@ -67,42 +86,28 @@ export class BorrowRequestService {
 
   async createBorrowRequest(actor: ActorContext, input: BorrowRequestCreateInput) {
     this.borrowRequestPolicy.assertCanCreate(actor);
+    const detail = await this.createBorrowRequestRecord(actor, actor.externalUserId, input);
 
-    const assetIds = input.items.map((item) => item.assetId);
-    const assetRows = await this.assetRepository.findByIds(assetIds);
-    const assetsById = new Map(assetRows.map((asset) => [asset.id, asset]));
+    this.notifyAsync(() => this.notificationService?.notifyBorrowRequestCreated(detail));
 
-    assertAssetsCanBeBorrowed(input, assetsById);
+    return detail;
+  }
 
-    const detail = await withTransactionContext(async (ctx) => {
-      const created = await ctx.borrowRequestRepo.create({
-        borrowerExternalUserId: actor.externalUserId,
-        requestNo: `TMP-${Date.now()}`,
-        purpose: input.purpose,
-        startDate: input.startDate,
-        dueDate: input.dueDate,
-      });
+  async createFollowUpBorrowRequest(actor: ActorContext, id: number) {
+    const request = await this.getBorrowRequestById(actor, id);
 
-      await ctx.borrowRequestRepo.updateRequestNo(created.id, buildBorrowRequestNo(created.id));
-      await ctx.borrowRequestRepo.insertItems(created.id, input.items);
+    if (actor.externalUserId !== request.borrowerExternalUserId) {
+      throw new AuthorizationError(
+        "Only the borrower can create a follow-up request for the remaining items",
+      );
+    }
 
-      const detail = await ctx.borrowRequestRepo.findById(created.id);
-
-      if (!detail) {
-        throw new NotFoundError("Borrow request not found after creation", {
-          borrowRequestId: created.id,
-        });
-      }
-
-      await ctx.auditService.record({
-        actor,
-        action: "borrow_request.create",
-        entityType: "borrow_request",
-        entityId: detail.id,
-        afterData: detail,
-      });
-
-      return detail;
+    const remainingItems = getRemainingItemsForFollowUp(request);
+    const detail = await this.createBorrowRequestRecord(actor, request.borrowerExternalUserId, {
+      purpose: request.purpose ?? "Follow-up request",
+      startDate: request.startDate,
+      dueDate: request.dueDate,
+      items: remainingItems,
     });
 
     this.notifyAsync(() => this.notificationService?.notifyBorrowRequestCreated(detail));
@@ -117,11 +122,18 @@ export class BorrowRequestService {
   ) {
     this.borrowRequestPolicy.assertCanApprove(actor);
 
-    const request = await this.requireRequestTransition(id, "approved");
+    const request = await this.getRequestOrThrow(id);
     const approvedItems = resolveApprovedItems(request, input);
+    const nextStatus = resolveApprovalStatus(approvedItems);
+
+    this.assertRequestTransition(request.status, nextStatus);
 
     const updated = await withTransactionContext(async (ctx) => {
       for (const item of approvedItems) {
+        if (item.approvedQty === 0) {
+          continue;
+        }
+
         const asset = await ctx.assetRepo.decrementAvailableQtyIfEnough(item.assetId, item.approvedQty);
 
         if (!asset) {
@@ -141,7 +153,17 @@ export class BorrowRequestService {
           approvedQty: item.approvedQty,
         })),
       );
-      await ctx.borrowRequestRepo.markApproved(id, actor.externalUserId);
+      const reviewed = await ctx.borrowRequestRepo.markReviewed(
+        id,
+        actor.externalUserId,
+        nextStatus,
+      );
+
+      if (!reviewed) {
+        throw new ConflictError("Borrow request is no longer pending", {
+          borrowRequestId: id,
+        });
+      }
 
       const updated = await ctx.borrowRequestRepo.findById(id);
 
@@ -178,11 +200,18 @@ export class BorrowRequestService {
     const request = await this.requireRequestTransition(id, "rejected");
 
     const updated = await withTransactionContext(async (ctx) => {
-      await ctx.borrowRequestRepo.markRejected(
+      const rejected = await ctx.borrowRequestRepo.markRejected(
         id,
         actor.externalUserId,
         input.rejectionReason,
+        request.status,
       );
+
+      if (!rejected) {
+        throw new ConflictError("Borrow request is no longer pending", {
+          borrowRequestId: id,
+        });
+      }
 
       const updated = await ctx.borrowRequestRepo.findById(id);
 
@@ -215,6 +244,7 @@ export class BorrowRequestService {
     input: BorrowRequestCancelInput,
   ) {
     const request = await this.requireRequestTransition(id, "cancelled");
+    const restockItems = getRestockItemsForCancellation(request);
 
     if (actor.role === "borrower" && request.borrowerExternalUserId !== actor.externalUserId) {
       throw new ConflictError(
@@ -223,11 +253,30 @@ export class BorrowRequestService {
     }
 
     const updated = await withTransactionContext(async (ctx) => {
-      await ctx.borrowRequestRepo.markCancelled(
+      const cancelled = await ctx.borrowRequestRepo.markCancelled(
         id,
         actor.externalUserId,
         input.cancelReason,
+        request.status,
       );
+
+      if (!cancelled) {
+        throw new ConflictError("Borrow request can no longer be cancelled", {
+          borrowRequestId: id,
+          status: request.status,
+        });
+      }
+
+      for (const item of restockItems) {
+        const asset = await ctx.assetRepo.incrementAvailableQty(item.assetId, item.qty);
+
+        if (!asset) {
+          throw new NotFoundError("Asset not found while restoring cancelled approval", {
+            assetId: item.assetId,
+            borrowRequestId: id,
+          });
+        }
+      }
 
       const updated = await ctx.borrowRequestRepo.findById(id);
 
@@ -249,7 +298,19 @@ export class BorrowRequestService {
       return updated;
     });
 
-    this.notifyAsync(() => this.notificationService?.notifyBorrowRequestCancelled(updated));
+    this.notifyAsync(async () => {
+      await this.notificationService?.notifyBorrowRequestCancelled(updated);
+
+      if (
+        shouldNotifyBorrowerOfCancellation(
+          request.status,
+          actor.externalUserId,
+          request.borrowerExternalUserId,
+        )
+      ) {
+        await this.notificationService?.notifyBorrowRequestApprovalCancelled(updated);
+      }
+    });
 
     return updated;
   }
@@ -258,15 +319,70 @@ export class BorrowRequestService {
     id: number,
     nextStatus: BorrowRequestStatus,
   ): Promise<BorrowRequestDetail> {
+    const request = await this.getRequestOrThrow(id);
+    this.assertRequestTransition(request.status, nextStatus);
+
+    return request;
+  }
+
+  private async getRequestOrThrow(id: number): Promise<BorrowRequestDetail> {
     const request = await this.borrowRequestRepository.findById(id);
 
     if (!request) {
       throw new NotFoundError("Borrow request not found", { borrowRequestId: id });
     }
 
-    BorrowRequestStateMachine.assertCanTransition(request.status, nextStatus);
-
     return request;
+  }
+
+  private async createBorrowRequestRecord(
+    actor: ActorContext,
+    borrowerExternalUserId: string,
+    input: BorrowRequestCreateInput,
+  ) {
+    const assetIds = input.items.map((item) => item.assetId);
+    const assetRows = await this.assetRepository.findByIds(assetIds);
+    const assetsById = new Map(assetRows.map((asset) => [asset.id, asset]));
+
+    assertAssetsCanBeBorrowed(input, assetsById);
+
+    return withTransactionContext(async (ctx) => {
+      const created = await ctx.borrowRequestRepo.create({
+        borrowerExternalUserId,
+        requestNo: `TMP-${Date.now()}`,
+        purpose: input.purpose,
+        startDate: input.startDate,
+        dueDate: input.dueDate,
+      });
+
+      await ctx.borrowRequestRepo.updateRequestNo(created.id, buildBorrowRequestNo(created.id));
+      await ctx.borrowRequestRepo.insertItems(created.id, input.items);
+
+      const detail = await ctx.borrowRequestRepo.findById(created.id);
+
+      if (!detail) {
+        throw new NotFoundError("Borrow request not found after creation", {
+          borrowRequestId: created.id,
+        });
+      }
+
+      await ctx.auditService.record({
+        actor,
+        action: "borrow_request.create",
+        entityType: "borrow_request",
+        entityId: detail.id,
+        afterData: detail,
+      });
+
+      return detail;
+    });
+  }
+
+  private assertRequestTransition(
+    currentStatus: BorrowRequestStatus,
+    nextStatus: BorrowRequestStatus,
+  ) {
+    BorrowRequestStateMachine.assertCanTransition(currentStatus, nextStatus);
   }
 
   private notifyAsync(fn: () => Promise<void> | undefined) {

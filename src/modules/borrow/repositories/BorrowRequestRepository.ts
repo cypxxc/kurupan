@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, lt, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import {
@@ -11,6 +11,11 @@ import type {
   BorrowRequestCreateInput,
   BorrowRequestListQuery,
 } from "@/lib/validators/borrow-requests";
+import {
+  buildPaginatedResult,
+  resolvePagination,
+  type PaginatedResult,
+} from "@/lib/pagination";
 import type { BorrowRequestStatus } from "@/modules/borrow/domain/BorrowRequestStateMachine";
 
 export type BorrowRequestItemView = {
@@ -18,6 +23,7 @@ export type BorrowRequestItemView = {
   assetId: number;
   assetCode: string;
   assetName: string;
+  availableQty: number;
   requestedQty: number;
   approvedQty: number | null;
 };
@@ -34,26 +40,58 @@ type BorrowRequestListFilters = BorrowRequestListQuery & {
 export class BorrowRequestRepository {
   constructor(private readonly db: DbExecutor = getDb()) {}
 
+  private readonly listOrder = [
+    sql`case ${borrowRequests.status}::text
+      when 'pending' then 0
+      when 'approved' then 1
+      when 'partially_approved' then 2
+      when 'partially_returned' then 3
+      when 'returned' then 4
+      when 'rejected' then 5
+      when 'cancelled' then 6
+      else 7
+    end`,
+    desc(borrowRequests.createdAt),
+    desc(borrowRequests.id),
+  ] as const;
+
   async findMany(filters: BorrowRequestListFilters): Promise<BorrowRequestDetail[]> {
-    const conditions = [];
-
-    if (filters.status) {
-      conditions.push(eq(borrowRequests.status, filters.status));
-    }
-
-    if (filters.borrowerExternalUserId) {
-      conditions.push(eq(borrowRequests.borrowerExternalUserId, filters.borrowerExternalUserId));
-    }
+    const conditions = this.buildConditions(filters);
 
     const query = this.db
       .select()
       .from(borrowRequests)
-      .orderBy(desc(borrowRequests.createdAt), asc(borrowRequests.id));
+      .orderBy(...this.listOrder);
 
     const requests =
       conditions.length > 0 ? await query.where(and(...conditions)) : await query;
 
     return this.attachRelations(requests);
+  }
+
+  async findPage(
+    filters: BorrowRequestListFilters,
+    defaultLimit = 10,
+  ): Promise<PaginatedResult<BorrowRequestDetail>> {
+    const conditions = this.buildConditions(filters);
+    const pagination = resolvePagination(filters, defaultLimit);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await this.db
+      .select({ total: count() })
+      .from(borrowRequests)
+      .where(whereClause);
+
+    const query = this.db
+      .select()
+      .from(borrowRequests)
+      .orderBy(...this.listOrder)
+      .limit(pagination.limit)
+      .offset(pagination.offset);
+    const requests = whereClause ? await query.where(whereClause) : await query;
+    const items = await this.attachRelations(requests);
+
+    return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
   }
 
   async findById(id: number): Promise<BorrowRequestDetail | null> {
@@ -209,7 +247,26 @@ export class BorrowRequestRepository {
         approvedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(borrowRequests.id, id))
+      .where(and(eq(borrowRequests.id, id), eq(borrowRequests.status, "pending")))
+      .returning();
+
+    return record ?? null;
+  }
+
+  async markReviewed(
+    id: number,
+    approvedByExternalUserId: string,
+    status: "approved" | "partially_approved",
+  ) {
+    const [record] = await this.db
+      .update(borrowRequests)
+      .set({
+        status,
+        approvedByExternalUserId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(borrowRequests.id, id), eq(borrowRequests.status, "pending")))
       .returning();
 
     return record ?? null;
@@ -219,6 +276,7 @@ export class BorrowRequestRepository {
     id: number,
     rejectedByExternalUserId: string,
     rejectionReason?: string,
+    expectedCurrentStatus: BorrowRequestStatus = "pending",
   ) {
     const [record] = await this.db
       .update(borrowRequests)
@@ -229,7 +287,12 @@ export class BorrowRequestRepository {
         rejectionReason: rejectionReason ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(borrowRequests.id, id))
+      .where(
+        and(
+          eq(borrowRequests.id, id),
+          eq(borrowRequests.status, expectedCurrentStatus),
+        ),
+      )
       .returning();
 
     return record ?? null;
@@ -239,7 +302,14 @@ export class BorrowRequestRepository {
     id: number,
     cancelledByExternalUserId: string,
     cancelReason?: string,
+    expectedCurrentStatus?: BorrowRequestStatus,
   ) {
+    const conditions = [eq(borrowRequests.id, id)];
+
+    if (expectedCurrentStatus) {
+      conditions.push(eq(borrowRequests.status, expectedCurrentStatus));
+    }
+
     const [record] = await this.db
       .update(borrowRequests)
       .set({
@@ -249,7 +319,7 @@ export class BorrowRequestRepository {
         cancelReason: cancelReason ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(borrowRequests.id, id))
+      .where(and(...conditions))
       .returning();
 
     return record ?? null;
@@ -257,7 +327,13 @@ export class BorrowRequestRepository {
 
   async updateStatus(
     id: number,
-    status: "approved" | "rejected" | "cancelled" | "partially_returned" | "returned",
+    status:
+      | "approved"
+      | "partially_approved"
+      | "rejected"
+      | "cancelled"
+      | "partially_returned"
+      | "returned",
   ) {
     const [record] = await this.db
       .update(borrowRequests)
@@ -269,6 +345,20 @@ export class BorrowRequestRepository {
       .returning();
 
     return record ?? null;
+  }
+
+  private buildConditions(filters: BorrowRequestListFilters) {
+    const conditions = [];
+
+    if (filters.status) {
+      conditions.push(eq(borrowRequests.status, filters.status));
+    }
+
+    if (filters.borrowerExternalUserId) {
+      conditions.push(eq(borrowRequests.borrowerExternalUserId, filters.borrowerExternalUserId));
+    }
+
+    return conditions;
   }
 
   private async attachRelations(
@@ -291,6 +381,7 @@ export class BorrowRequestRepository {
           assetId: borrowRequestItems.assetId,
           assetCode: assets.assetCode,
           assetName: assets.name,
+          availableQty: assets.availableQty,
           requestedQty: borrowRequestItems.requestedQty,
           approvedQty: borrowRequestItems.approvedQty,
         })
@@ -315,6 +406,7 @@ export class BorrowRequestRepository {
         assetId: item.assetId,
         assetCode: item.assetCode,
         assetName: item.assetName,
+        availableQty: item.availableQty,
         requestedQty: item.requestedQty,
         approvedQty: item.approvedQty,
       });

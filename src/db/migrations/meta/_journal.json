@@ -50,6 +50,34 @@
       "when": 1775631386274,
       "tag": "0006_curvy_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775711400539,
+      "tag": "0007_partially_approved_borrow_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775721407211,
+      "tag": "0008_big_tomas",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775785327946,
+      "tag": "0009_nervous_zombie",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775792872905,
+      "tag": "0010_fine_sersi",
+      "breakpoints": true
     }
   ]
 }

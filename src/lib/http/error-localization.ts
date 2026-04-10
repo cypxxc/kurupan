@@ -15,8 +15,10 @@ const CODE_FALLBACK_KEYS: Record<string, string> = {
   NOT_FOUND: "errors.codes.notFound",
   VALIDATION_ERROR: "errors.codes.validation",
   CONFLICT: "errors.codes.conflict",
+  INSUFFICIENT_STORAGE: "errors.codes.insufficientStorage",
   INSUFFICIENT_STOCK: "errors.codes.insufficientStock",
   RETURN_EXCEEDS_APPROVED: "errors.codes.returnExceedsApproved",
+  TOO_MANY_REQUESTS: "errors.codes.tooManyRequests",
   INTERNAL_SERVER_ERROR: "errors.codes.internalServerError",
 };
 
@@ -29,6 +31,7 @@ const EXACT_MESSAGE_KEYS = new Map<string, string>([
   ["Multipart field payload must be valid JSON", "errors.validation.multipartFieldPayloadMustBeValidJson"],
   ["Asset images must be JPG, PNG, or WebP", "errors.validation.assetImagesMustBeJpgPngOrWebp"],
   ["Each asset image must be 5 MB or smaller", "errors.validation.eachAssetImageMustBeFiveMbOrSmaller"],
+  ["Useful life years must be greater than zero", "errors.validation.usefulLifeYearsMustBeGreaterThanZero"],
   ["Residual value must not exceed purchase price", "errors.validation.residualValueMustNotExceedPurchasePrice"],
   ["At least one field must be provided", "errors.validation.atLeastOneFieldMustBeProvided"],
   ["Date must be in YYYY-MM-DD format", "errors.validation.dateMustBeInYyyyMmDdFormat"],

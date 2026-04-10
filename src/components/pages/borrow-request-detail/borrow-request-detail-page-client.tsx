@@ -12,18 +12,29 @@ import { toast } from "sonner";
 import { BorrowRequestActionDialog } from "@/components/shared/borrow-request-action-dialog";
 import { BorrowRequestEmptyState } from "@/components/pages/borrow-request-detail/borrow-request-empty-state";
 import { BorrowRequestHeader } from "@/components/pages/borrow-request-detail/borrow-request-header";
-import { BorrowRequestItemsCard } from "@/components/pages/borrow-request-detail/borrow-request-items-card";
+import {
+  BorrowRequestItemsCard,
+  type BorrowRequestApprovalItem,
+} from "@/components/pages/borrow-request-detail/borrow-request-items-card";
 import { BorrowRequestLoadingState } from "@/components/pages/borrow-request-detail/borrow-request-loading-state";
 import { BorrowRequestOutcomeCard } from "@/components/pages/borrow-request-detail/borrow-request-outcome-card";
 import { BorrowRequestTimeline } from "@/components/pages/borrow-request-detail/borrow-request-timeline";
+import { apiClient, getApiErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import type { HistoryEvent } from "@/types/history";
-import {
-  isBorrowRequestOverdue,
-  type BorrowRequestDetail,
-} from "@/types/borrow-requests";
+import { isBorrowRequestOverdue, type BorrowRequestDetail } from "@/types/borrow-requests";
 
-type DialogAction = "approve" | "reject" | "cancel" | null;
+type DialogAction = "reject" | "cancel" | "followUp" | null;
+
+function createApprovalItems(
+  items: BorrowRequestDetail["items"],
+): BorrowRequestApprovalItem[] {
+  return items.map((item) => ({
+    borrowRequestItemId: item.id,
+    selected: true,
+    approvedQty: item.requestedQty,
+  }));
+}
 
 function getReturnTo(searchParams: ReadonlyURLSearchParams) {
   const returnTo = searchParams.get("returnTo");
@@ -46,6 +57,7 @@ export function BorrowRequestDetailPageClient() {
   const [loadingTimeline, setLoadingTimeline] = useState(true);
   const [dialogAction, setDialogAction] = useState<DialogAction>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [approvalItems, setApprovalItems] = useState<BorrowRequestApprovalItem[]>([]);
 
   const canStaffManage = user?.role === "staff" || user?.role === "admin";
 
@@ -54,21 +66,13 @@ export function BorrowRequestDetailPageClient() {
       setLoading(true);
 
       try {
-        const response = await fetch(`/api/borrow-requests/${id}`);
-        const result = (await response.json()) as
-          | { success: true; data: BorrowRequestDetail }
-          | { success: false; error?: { message?: string } };
-
-        if (!result.success) {
-          toast.error(result.error?.message ?? "Unable to load borrow request.");
-          setRequest(null);
-          return;
-        }
-
-        setRequest(result.data);
-      } catch {
-        toast.error("An error occurred while loading the request.");
+        const data = await apiClient.get<BorrowRequestDetail>(`/api/borrow-requests/${id}`);
+        setRequest(data);
+        setApprovalItems(createApprovalItems(data.items));
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "An error occurred while loading the request."));
         setRequest(null);
+        setApprovalItems([]);
       } finally {
         setLoading(false);
       }
@@ -82,17 +86,8 @@ export function BorrowRequestDetailPageClient() {
           entityType: "borrow_request",
           entityId: id,
         });
-        const response = await fetch(`/api/history?${params.toString()}`);
-        const result = (await response.json()) as
-          | { success: true; data: HistoryEvent[] }
-          | { success: false; error?: { message?: string } };
-
-        if (!result.success) {
-          setTimeline([]);
-          return;
-        }
-
-        setTimeline(result.data);
+        const data = await apiClient.get<HistoryEvent[]>("/api/history", { query: params });
+        setTimeline(data);
       } catch {
         setTimeline([]);
       } finally {
@@ -104,12 +99,36 @@ export function BorrowRequestDetailPageClient() {
   }, [id]);
 
   const canApproveReject = canStaffManage && request?.status === "pending";
+  const selectedApprovalCount = approvalItems.filter((item) => item.selected).length;
+  const selectedApprovedQty = approvalItems
+    .filter((item) => item.selected)
+    .reduce((sum, item) => sum + item.approvedQty, 0);
+  const canApproveSelected =
+    canApproveReject && selectedApprovalCount > 0 && selectedApprovedQty > 0;
   const canCancel =
     request?.status === "pending" &&
     (!!canStaffManage || request?.borrowerExternalUserId === user?.externalUserId);
+  const remainingFollowUpItems = useMemo(() => {
+    if (!request) {
+      return [];
+    }
+
+    return request.items
+      .map((item) => ({
+        ...item,
+        remainingQty: Math.max(0, item.requestedQty - (item.approvedQty ?? 0)),
+      }))
+      .filter((item) => item.remainingQty > 0);
+  }, [request]);
+  const canCreateFollowUp =
+    request?.status === "partially_approved" &&
+    request.borrowerExternalUserId === user?.externalUserId &&
+    remainingFollowUpItems.length > 0;
   const canRecordReturn =
     canStaffManage &&
-    (request?.status === "approved" || request?.status === "partially_returned");
+    (request?.status === "approved" ||
+      request?.status === "partially_approved" ||
+      request?.status === "partially_returned");
 
   const overdue = useMemo(() => {
     if (!request) {
@@ -120,15 +139,52 @@ export function BorrowRequestDetailPageClient() {
   }, [request]);
 
   const refreshTimeline = async (requestId: number) => {
-    const timelineResponse = await fetch(
-      `/api/history?entityType=borrow_request&entityId=${requestId}`,
-    );
-    const timelineResult = (await timelineResponse.json()) as
-      | { success: true; data: HistoryEvent[] }
-      | { success: false };
+    try {
+      const data = await apiClient.get<HistoryEvent[]>("/api/history", {
+        query: { entityType: "borrow_request", entityId: requestId },
+      });
+      setTimeline(data);
+    } catch {
+      setTimeline([]);
+    }
+  };
 
-    if (timelineResult.success) {
-      setTimeline(timelineResult.data);
+  const handleApproveSelected = async () => {
+    if (!request || !canStaffManage || !canApproveReject) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const data = await apiClient.post<BorrowRequestDetail>(
+        `/api/borrow-requests/${request.id}/approve`,
+        {
+        body: JSON.stringify({
+          items: request.items.map((item) => {
+            const approval = approvalItems.find(
+              (candidate) => candidate.borrowRequestItemId === item.id,
+            );
+
+            return {
+              borrowRequestItemId: item.id,
+              approvedQty: approval?.selected ? approval.approvedQty : 0,
+            };
+          }),
+        }),
+      },
+      );
+
+      toast.success(
+        data.status === "partially_approved"
+          ? "Borrow request partially approved."
+          : "Borrow request approved.",
+      );
+      router.push(getReturnTo(searchParams));
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "An error occurred while processing the request."));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -138,44 +194,39 @@ export function BorrowRequestDetailPageClient() {
     }
 
     setSubmitting(true);
-    const action = dialogAction;
-
     const body =
-      action === "reject"
+      dialogAction === "reject"
         ? { rejectionReason: reason }
-        : action === "cancel"
+        : dialogAction === "cancel"
           ? { cancelReason: reason }
           : undefined;
 
     try {
-      const response = await fetch(`/api/borrow-requests/${request.id}/${dialogAction}`, {
-        method: "POST",
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      if (dialogAction === "followUp") {
+        const data = await apiClient.post<BorrowRequestDetail>(
+          `/api/borrow-requests/${request.id}/follow-up`,
+        );
 
-      const result = (await response.json()) as
-        | { success: true; data: BorrowRequestDetail }
-        | { success: false; error?: { message?: string } };
-
-      if (!result.success) {
-        toast.error(result.error?.message ?? "Unable to update this request.");
-        return;
-      }
-
-      if (action === "approve" && canStaffManage) {
         setDialogAction(null);
-        toast.success("Borrow request approved.");
-        router.push(getReturnTo(searchParams));
+        toast.success("Created a follow-up borrow request.");
+        router.push(`/borrow-requests/${data.id}`);
         return;
       }
 
-      setRequest(result.data);
+      const data = await apiClient.post<BorrowRequestDetail>(
+        `/api/borrow-requests/${request.id}/${dialogAction}`,
+        {
+          body: body ? JSON.stringify(body) : undefined,
+        },
+      );
+
+      setRequest(data);
+      setApprovalItems(createApprovalItems(data.items));
       setDialogAction(null);
       toast.success("Borrow request updated.");
       await refreshTimeline(request.id);
-    } catch {
-      toast.error("An error occurred while processing the request.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "An error occurred while processing the request."));
     } finally {
       setSubmitting(false);
     }
@@ -195,14 +246,38 @@ export function BorrowRequestDetailPageClient() {
         request={request}
         overdue={overdue}
         canApproveReject={canApproveReject}
+        canApproveSelected={Boolean(canApproveSelected) && !submitting}
+        selectedApprovalCount={selectedApprovalCount}
         canCancel={canCancel}
         canRecordReturn={canRecordReturn}
-        onApprove={() => setDialogAction("approve")}
+        remainingFollowUpCount={canCreateFollowUp ? remainingFollowUpItems.length : 0}
+        onApproveSelected={handleApproveSelected}
+        onCreateFollowUp={() => setDialogAction("followUp")}
         onReject={() => setDialogAction("reject")}
         onCancel={() => setDialogAction("cancel")}
       />
 
-      <BorrowRequestItemsCard request={request} />
+      <BorrowRequestItemsCard
+        request={request}
+        editable={Boolean(canApproveReject)}
+        approvalItems={approvalItems}
+        onApprovalItemChange={(borrowRequestItemId, updater) =>
+          setApprovalItems((current) =>
+            current.map((item) =>
+              item.borrowRequestItemId === borrowRequestItemId ? updater(item) : item,
+            ),
+          )
+        }
+        onToggleAll={(checked) =>
+          setApprovalItems((current) =>
+            current.map((item) => ({
+              ...item,
+              selected: checked,
+              approvedQty: checked ? Math.max(1, item.approvedQty || 1) : item.approvedQty,
+            })),
+          )
+        }
+      />
       <BorrowRequestOutcomeCard request={request} />
       <BorrowRequestTimeline loading={loadingTimeline} timeline={timeline} />
 

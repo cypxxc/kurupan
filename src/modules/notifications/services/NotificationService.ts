@@ -20,6 +20,7 @@ type NotificationRecipientInput = {
   body: string;
   entityType?: NotificationEntityType | null;
   entityId?: string | null;
+  dedupeKey?: string | null;
 };
 
 type NotificationTemplate = Omit<NotificationRecipientInput, "recipientExternalUserId">;
@@ -71,10 +72,14 @@ export class NotificationService {
   }
 
   async notifyBorrowRequestApproved(request: BorrowRequestDetail) {
+    const isPartial = request.status === "partially_approved";
+
     await this.notifyMany([request.borrowerExternalUserId], {
       type: "borrow_request_approved",
-      title: "Borrow request approved",
-      body: `Your request ${request.requestNo} has been approved.`,
+      title: isPartial ? "Borrow request partially approved" : "Borrow request approved",
+      body: isPartial
+        ? `Your request ${request.requestNo} has been partially approved.`
+        : `Your request ${request.requestNo} has been approved.`,
       entityType: "borrow_request",
       entityId: String(request.id),
     });
@@ -102,6 +107,16 @@ export class NotificationService {
     });
   }
 
+  async notifyBorrowRequestApprovalCancelled(request: BorrowRequestDetail) {
+    await this.notifyMany([request.borrowerExternalUserId], {
+      type: "borrow_request_cancelled",
+      title: "Borrow request cancelled",
+      body: `Your request ${request.requestNo} was cancelled after approval.`,
+      entityType: "borrow_request",
+      entityId: String(request.id),
+    });
+  }
+
   async notifyReturnRecorded(record: ReturnTransactionDetail) {
     await this.notifyMany([record.borrowerExternalUserId], {
       type: "return_recorded",
@@ -112,17 +127,18 @@ export class NotificationService {
     });
   }
 
-  async notifyDueDateApproaching(request: BorrowRequestDetail) {
+  async notifyDueDateApproaching(request: BorrowRequestDetail, deliveryDate: string) {
     await this.notifyMany([request.borrowerExternalUserId], {
       type: "due_date_approaching",
       title: "Due date is tomorrow",
       body: `Request ${request.requestNo} is due on ${request.dueDate}.`,
       entityType: "borrow_request",
       entityId: String(request.id),
+      dedupeKey: `${request.id}:${deliveryDate}`,
     });
   }
 
-  async notifyOverdue(request: BorrowRequestDetail) {
+  async notifyOverdue(request: BorrowRequestDetail, deliveryDate: string) {
     const staffAndAdminIds = await this.getStaffAndAdminIds();
 
     await Promise.all([
@@ -132,6 +148,7 @@ export class NotificationService {
         body: `Request ${request.requestNo} is overdue since ${request.dueDate}.`,
         entityType: "borrow_request",
         entityId: String(request.id),
+        dedupeKey: `${request.id}:${deliveryDate}`,
       }),
       this.notifyMany(staffAndAdminIds, {
         type: "overdue",
@@ -139,6 +156,7 @@ export class NotificationService {
         body: `${request.borrowerName}'s request ${request.requestNo} is overdue since ${request.dueDate}.`,
         entityType: "borrow_request",
         entityId: String(request.id),
+        dedupeKey: `${request.id}:${deliveryDate}`,
       }),
     ]);
   }
@@ -174,8 +192,13 @@ export class NotificationService {
 
   private async createAndBroadcast(
     input: NotificationRecipientInput,
-  ): Promise<NotificationRecord> {
+  ): Promise<NotificationRecord | null> {
     const notification = await this.notificationRepository.create(input);
+
+    if (!notification) {
+      return null;
+    }
+
     const unreadCount = await this.notificationRepository.countUnread(
       input.recipientExternalUserId,
     );

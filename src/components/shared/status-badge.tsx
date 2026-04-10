@@ -56,6 +56,12 @@ const BORROW_STATUS: Record<string, StatusConfig> = {
     className:
       "border-emerald-500/20 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
   },
+  partially_approved: {
+    labelKey: "common.statuses.borrow.partiallyApproved",
+    icon: RefreshCcw,
+    className:
+      "border-amber-500/20 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+  },
   rejected: {
     labelKey: "common.statuses.borrow.rejected",
     icon: XCircle,

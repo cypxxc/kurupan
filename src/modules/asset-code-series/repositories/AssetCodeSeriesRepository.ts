@@ -2,7 +2,7 @@ import { asc, count, eq, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import { assetCodeSeries, assets } from "@/db/schema";
-import { NotFoundError } from "@/lib/errors";
+import { ConflictError, NotFoundError } from "@/lib/errors";
 import type {
   SeriesCreateInput,
   SeriesUpdateInput,
@@ -14,6 +14,15 @@ function buildAssetCode(input: {
   padLength: number;
   counter: number;
 }) {
+  if (String(input.counter).length > input.padLength) {
+    throw new ConflictError("Asset code counter exceeds configured pad length", {
+      counter: input.counter,
+      padLength: input.padLength,
+      prefix: input.prefix,
+      separator: input.separator,
+    });
+  }
+
   return `${input.prefix}${input.separator}${String(input.counter).padStart(input.padLength, "0")}`;
 }
 
@@ -99,11 +108,14 @@ export class AssetCodeSeriesRepository {
       throw new NotFoundError("ไม่พบชุดรหัสครุภัณฑ์", { seriesId: id });
     }
 
-    return buildAssetCode({
-      prefix: record.prefix,
-      separator: record.separator,
-      padLength: record.padLength,
-      counter: record.counter,
-    });
+    return {
+      claimedCode: buildAssetCode({
+        prefix: record.prefix,
+        separator: record.separator,
+        padLength: record.padLength,
+        counter: record.counter,
+      }),
+      series: record,
+    };
   }
 }

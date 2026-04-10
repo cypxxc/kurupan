@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
+import { ClipboardList } from "lucide-react";
 
 import { OverdueBadge } from "@/components/shared/overdue-badge";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -15,14 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import {
-  compareBorrowRequestsForDisplay,
   isBorrowRequestOverdue,
   type BorrowRequest,
 } from "@/types/borrow-requests";
-
-const PAGE_SIZE = 10;
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
@@ -35,6 +31,9 @@ export function BorrowRequestDataTable({
   loading,
   isBorrower,
   page,
+  limit,
+  total,
+  totalPages,
   returnTo,
   onPageChange,
 }: {
@@ -42,27 +41,20 @@ export function BorrowRequestDataTable({
   loading: boolean;
   isBorrower: boolean;
   page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
   returnTo: string;
   onPageChange: (page: number) => void;
 }) {
-  const orderedRequests = useMemo(
-    () => [...requests].sort(compareBorrowRequestsForDisplay),
-    [requests],
-  );
-  const pageCount = Math.max(1, Math.ceil(orderedRequests.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-
-  const visibleRequests = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return orderedRequests.slice(start, start + PAGE_SIZE);
-  }, [currentPage, orderedRequests]);
-
   const handleDetailNavigate = () => {
     window.sessionStorage.setItem(
       `borrow-requests:scroll:${returnTo}`,
       String(window.scrollY),
     );
   };
+
+  const currentPage = Math.min(page, Math.max(1, totalPages));
 
   if (loading) {
     return (
@@ -119,7 +111,7 @@ export function BorrowRequestDataTable({
     );
   }
 
-  if (orderedRequests.length === 0) {
+  if (requests.length === 0) {
     return (
       <div className="empty-state">
         <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
@@ -133,8 +125,8 @@ export function BorrowRequestDataTable({
     );
   }
 
-  const startItem = (currentPage - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(currentPage * PAGE_SIZE, orderedRequests.length);
+  const startItem = (currentPage - 1) * limit + 1;
+  const endItem = Math.min(currentPage * limit, total);
 
   return (
     <div className="table-shell">
@@ -153,7 +145,7 @@ export function BorrowRequestDataTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleRequests.map((request) => {
+            {requests.map((request) => {
               const overdue = isBorrowRequestOverdue(request.status, request.dueDate);
 
               return (
@@ -206,37 +198,15 @@ export function BorrowRequestDataTable({
       </div>
       <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground">
-          แสดง {startItem}-{endItem} จาก {orderedRequests.length} รายการ
+          แสดง {startItem}-{endItem} จาก {total} รายการ
         </p>
-        <div className="flex items-center gap-2 self-end">
-          <button
-            type="button"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "gap-1",
-            )}
-            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="size-3.5" />
-            ก่อนหน้า
-          </button>
-          <span className="min-w-16 text-center text-muted-foreground">
-            {currentPage} / {pageCount}
-          </span>
-          <button
-            type="button"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "gap-1",
-            )}
-            onClick={() => onPageChange(Math.min(pageCount, currentPage + 1))}
-            disabled={currentPage === pageCount}
-          >
-            ถัดไป
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
+        <PaginationControls
+          page={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          previousLabel="ก่อนหน้า"
+          nextLabel="ถัดไป"
+        />
       </div>
     </div>
   );

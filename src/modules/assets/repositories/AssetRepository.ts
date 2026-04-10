@@ -11,40 +11,54 @@ import {
   returnTransactions,
 } from "@/db/schema";
 import type { AssetCreateInput, AssetListQuery, AssetUpdateInput } from "@/lib/validators/assets";
+import {
+  buildPaginatedResult,
+  resolvePagination,
+  type PaginatedResult,
+} from "@/lib/pagination";
 import type { AssetActivity } from "@/types/assets";
 
 export class AssetRepository {
   constructor(private readonly db: DbExecutor = getDb()) {}
 
+  private readonly listOrder = [
+    sql`case when ${assets.availableQty} = 0 then 1 else 0 end`,
+    asc(assets.assetCode),
+  ] as const;
+
   async findMany(filters: AssetListQuery) {
-    const conditions = [];
+    const conditions = this.buildConditions(filters);
 
-    if (filters.search) {
-      conditions.push(
-        or(
-          ilike(assets.name, `%${filters.search}%`),
-          ilike(assets.assetCode, `%${filters.search}%`),
-        ),
-      );
-    }
-
-    if (filters.category) {
-      conditions.push(eq(assets.category, filters.category));
-    }
-
-    if (filters.location) {
-      conditions.push(eq(assets.location, filters.location));
-    }
-
-    if (filters.status) {
-      conditions.push(eq(assets.status, filters.status));
-    }
-
-    const query = this.db.select().from(assets).orderBy(asc(assets.assetCode));
+    const query = this.db.select().from(assets).orderBy(...this.listOrder);
     const records =
       conditions.length > 0 ? await query.where(and(...conditions)) : await query;
 
     return this.attachPrimaryImageUrls(records);
+  }
+
+  async findPage(
+    filters: AssetListQuery,
+    defaultLimit = 10,
+  ): Promise<PaginatedResult<Awaited<ReturnType<AssetRepository["findMany"]>>[number]>> {
+    const conditions = this.buildConditions(filters);
+    const pagination = resolvePagination(filters, defaultLimit);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await this.db
+      .select({ total: count() })
+      .from(assets)
+      .where(whereClause);
+
+    const query = this.db
+      .select()
+      .from(assets)
+      .orderBy(...this.listOrder)
+      .limit(pagination.limit)
+      .offset(pagination.offset);
+    const records = whereClause ? await query.where(whereClause) : await query;
+    const items = await this.attachPrimaryImageUrls(records);
+
+    return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
   }
 
   async findById(id: number) {
@@ -213,6 +227,19 @@ export class AssetRepository {
     return record ?? null;
   }
 
+  async updateStatus(assetId: number, status: "available" | "maintenance" | "retired") {
+    const [record] = await this.db
+      .update(assets)
+      .set({
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(assets.id, assetId))
+      .returning();
+
+    return record ?? null;
+  }
+
   async decrementTotalQty(assetId: number, qty: number) {
     const [record] = await this.db
       .update(assets)
@@ -303,6 +330,45 @@ export class AssetRepository {
     return [...borrowActivity, ...returnActivity].sort((left, right) =>
       right.occurredAt.localeCompare(left.occurredAt),
     );
+  }
+
+  private buildConditions(filters: AssetListQuery) {
+    const conditions = [];
+
+    if (filters.search) {
+      conditions.push(
+        or(
+          ilike(assets.name, `%${filters.search}%`),
+          ilike(assets.assetCode, `%${filters.search}%`),
+        ),
+      );
+    }
+
+    if (filters.category) {
+      conditions.push(eq(assets.category, filters.category));
+    }
+
+    if (filters.location) {
+      conditions.push(eq(assets.location, filters.location));
+    }
+
+    if (filters.status) {
+      conditions.push(eq(assets.status, filters.status));
+    }
+
+    if (filters.stock === "in_stock") {
+      conditions.push(gte(assets.availableQty, 1));
+    }
+
+    if (filters.stock === "out_of_stock") {
+      conditions.push(eq(assets.availableQty, 0));
+    }
+
+    if (filters.borrowable) {
+      conditions.push(and(eq(assets.status, "available"), gte(assets.availableQty, 1)));
+    }
+
+    return conditions;
   }
 
   private async attachPrimaryImageUrls<T extends { id: number }>(records: T[]) {

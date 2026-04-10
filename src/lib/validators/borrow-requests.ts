@@ -5,6 +5,7 @@ import { dateStringSchema, positiveIntegerIdSchema } from "./http";
 const borrowRequestStatusValues = [
   "pending",
   "approved",
+  "partially_approved",
   "rejected",
   "cancelled",
   "partially_returned",
@@ -19,6 +20,8 @@ const borrowRequestItemSchema = z.object({
 export const borrowRequestListQuerySchema = z.object({
   status: z.enum(borrowRequestStatusValues).optional(),
   borrower: z.string().trim().min(1).max(255).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export const borrowRequestCreateSchema = z
@@ -46,7 +49,7 @@ export const borrowRequestIdParamsSchema = z.object({
 
 const approveItemSchema = z.object({
   borrowRequestItemId: positiveIntegerIdSchema,
-  approvedQty: z.coerce.number().int().positive(),
+  approvedQty: z.coerce.number().int().min(0),
 });
 
 export const borrowRequestApproveSchema = z

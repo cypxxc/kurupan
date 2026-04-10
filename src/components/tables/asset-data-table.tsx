@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Archive, Box, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Archive, Box, Search } from "lucide-react";
 
 import { useI18n } from "@/components/providers/i18n-provider";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
@@ -19,29 +20,29 @@ import { formatAssetQuantity } from "@/lib/asset-standards";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/types/assets";
 
-const PAGE_SIZE = 10;
-
 export function AssetDataTable({
   assets,
   loading,
   canManage,
   searchTerm,
+  page,
+  limit,
+  total,
+  totalPages,
+  onPageChange,
 }: {
   assets: Asset[];
   loading: boolean;
   canManage: boolean;
   searchTerm: string;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
 }) {
   const { t } = useI18n();
-  const [page, setPage] = useState(1);
-
-  const pageCount = Math.max(1, Math.ceil(assets.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-
-  const visibleAssets = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return assets.slice(start, start + PAGE_SIZE);
-  }, [assets, currentPage]);
+  const currentPage = Math.min(page, Math.max(1, totalPages));
 
   if (loading) {
     return (
@@ -128,8 +129,8 @@ export function AssetDataTable({
     );
   }
 
-  const startItem = (currentPage - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(currentPage * PAGE_SIZE, assets.length);
+  const startItem = (currentPage - 1) * limit + 1;
+  const endItem = Math.min(currentPage * limit, total);
 
   return (
     <div className="table-shell">
@@ -153,7 +154,7 @@ export function AssetDataTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleAssets.map((asset) => {
+            {assets.map((asset) => {
               const borrowable = asset.status === "available" && asset.availableQty > 0;
 
               return (
@@ -184,6 +185,16 @@ export function AssetDataTable({
                         >
                           {asset.name}
                         </Link>
+                        {asset.availableQty === 0 ? (
+                          <div className="mt-1">
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                            >
+                              {t("assets.table.outOfStock")}
+                            </Badge>
+                          </div>
+                        ) : null}
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
                           <span>
                             {asset.category ?? t("common.placeholders.uncategorized")}
@@ -266,32 +277,16 @@ export function AssetDataTable({
           {t("common.pagination.summary", {
             start: startItem,
             end: endItem,
-            total: assets.length,
+            total,
           })}
         </p>
-        <div className="flex items-center gap-2 self-end">
-          <button
-            type="button"
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="size-3.5" />
-            {t("common.pagination.previous")}
-          </button>
-          <span className="min-w-16 text-center text-muted-foreground">
-            {currentPage} / {pageCount}
-          </span>
-          <button
-            type="button"
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-            disabled={currentPage === pageCount}
-          >
-            {t("common.pagination.next")}
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
+        <PaginationControls
+          page={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          previousLabel={t("common.pagination.previous")}
+          nextLabel={t("common.pagination.next")}
+        />
       </div>
     </div>
   );

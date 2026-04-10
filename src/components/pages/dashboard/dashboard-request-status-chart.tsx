@@ -23,6 +23,10 @@ const STATUS_CHART_CONFIG: Record<BorrowRequestStatus, StatusChartConfig> = {
     label: "Approved",
     color: "var(--color-chart-3)",
   },
+  partially_approved: {
+    label: "Partially approved",
+    color: "var(--color-chart-5)",
+  },
   rejected: {
     label: "Rejected",
     color: "var(--destructive)",
@@ -90,7 +94,11 @@ export function DashboardRequestStatusChart({
   const maxValue = Math.max(...chartItems.map((item) => item.count), 1);
   const totalRequests = requests.length;
   const resolvedRequests = counts.returned + counts.rejected + counts.cancelled;
-  const inProgressRequests = counts.pending + counts.approved + counts.partially_returned;
+  const inProgressRequests =
+    counts.pending +
+    counts.approved +
+    counts.partially_approved +
+    counts.partially_returned;
   const topStatus =
     chartItems.reduce<(typeof chartItems)[number] | null>((currentTop, item) => {
       if (!currentTop || item.count > currentTop.count) {

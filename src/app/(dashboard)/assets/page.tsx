@@ -3,16 +3,21 @@ import { createAssetStack } from "@/modules/assets/createAssetStack";
 
 export default async function AssetsPage() {
   const { assetService } = createAssetStack();
-  const initialAssets = await assetService.listAssets({
+  const initialPage = await assetService.listAssetPage({
     search: "",
     category: "",
     location: "",
+    page: 1,
+    limit: 10,
   });
-  const serializedAssets = initialAssets.map((asset) => ({
-    ...asset,
-    createdAt: asset.createdAt.toISOString(),
-    updatedAt: asset.updatedAt.toISOString(),
-  }));
+  const serializedPage = {
+    ...initialPage,
+    items: initialPage.items.map((asset) => ({
+      ...asset,
+      createdAt: asset.createdAt.toISOString(),
+      updatedAt: asset.updatedAt.toISOString(),
+    })),
+  };
 
-  return <AssetsPageClient initialAssets={serializedAssets} />;
+  return <AssetsPageClient initialPage={serializedPage} />;
 }
