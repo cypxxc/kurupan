@@ -70,7 +70,7 @@ export function getPostgresClient() {
       max: process.env.NODE_ENV === "development" ? 2 : 10,
       idle_timeout: 20,
       connect_timeout: 10,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+      ssl: (process.env.NODE_ENV === "production" || process.env.APP_ENV === "production" || getDatabaseUrl().includes("sslmode=require")) ? { rejectUnauthorized: false } : false,
     });
     registerShutdownHooks();
   }
