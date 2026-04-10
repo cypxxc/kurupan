@@ -194,6 +194,7 @@ function NotificationRow({
     return (
       <Link
         href={href}
+        prefetch={false}
         className={className}
         onClick={(event) => {
           if (

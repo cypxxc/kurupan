@@ -65,6 +65,7 @@ function NavLinks({
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             onClick={onClick}
             aria-current={active ? "page" : undefined}
             className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150 ${

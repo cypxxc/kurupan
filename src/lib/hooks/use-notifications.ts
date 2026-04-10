@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
 } from "react";
 
@@ -19,6 +20,7 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
   const [loadingCount, setLoadingCount] = useState(true);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [hasLoadedNotifications, setHasLoadedNotifications] = useState(false);
+  const hasReceivedInitialCountRef = useRef(false);
 
   const loadUnreadCount = useCallback(async () => {
     setLoadingCount(true);
@@ -76,7 +78,9 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     }
 
     if (payload.type === "unread_count") {
+      hasReceivedInitialCountRef.current = true;
       setUnreadCount(payload.count);
+      setLoadingCount(false);
     }
   });
 
@@ -89,11 +93,12 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
   });
 
   useEffect(() => {
-    void loadUnreadCount();
-  }, [loadUnreadCount]);
-
-  useEffect(() => {
     const eventSource = new EventSource("/api/notifications/stream");
+    const fallbackTimer = window.setTimeout(() => {
+      if (!hasReceivedInitialCountRef.current) {
+        void loadUnreadCount();
+      }
+    }, 1_200);
 
     eventSource.onmessage = handleStreamMessage;
     eventSource.onerror = () => {
@@ -101,9 +106,10 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
     };
 
     return () => {
+      window.clearTimeout(fallbackTimer);
       eventSource.close();
     };
-  }, []);
+  }, [loadUnreadCount]);
 
   const markRead = useCallback(
     async (id: number) => {
