@@ -1,72 +1,22 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Boxes, Hash, ShieldAlert, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { redirect } from "next/navigation";
+import { ArrowLeft, Hash, ShieldAlert } from "lucide-react";
 
-import { AssetCodeSeriesTable } from "@/components/tables/asset-code-series-table";
+import { AssetSeriesPageClient } from "@/components/pages/asset-series-page-client";
 import { buttonVariants } from "@/components/ui/button";
-import { apiClient, getApiErrorMessage } from "@/lib/api-client";
-import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import { getCurrentActorFromServer } from "@/lib/server-auth";
+import { createAssetCodeSeriesStack } from "@/modules/asset-code-series/createAssetCodeSeriesStack";
 import type { AssetCodeSeries } from "@/types/asset-code-series";
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("th-TH").format(value);
-}
+export default async function AssetCodeSeriesPage() {
+  const actor = await getCurrentActorFromServer();
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
+  if (!actor) {
+    redirect("/login");
+  }
 
-function getPreviewCode(series: AssetCodeSeries) {
-  return `${series.prefix}${series.separator}${String(series.counter + 1).padStart(series.padLength, "0")}`;
-}
-
-export default function AssetCodeSeriesPage() {
-  const { user } = useAuth();
-  const [series, setSeries] = useState<AssetCodeSeries[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const canManage = user?.role === "staff" || user?.role === "admin";
-
-  useEffect(() => {
-    if (!canManage) {
-      setLoading(false);
-      return;
-    }
-
-    async function loadSeries() {
-      setLoading(true);
-
-      try {
-        const data = await apiClient.get<AssetCodeSeries[]>("/api/asset-code-series");
-        setSeries(data);
-      } catch (error) {
-        toast.error(getApiErrorMessage(error, "เกิดข้อผิดพลาดระหว่างโหลดชุดรหัส"));
-        setSeries([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    void loadSeries();
-  }, [canManage]);
-
-  const totalUsedCodes = useMemo(
-    () => series.reduce((sum, item) => sum + item.counter, 0),
-    [series],
-  );
-
-  const latestUpdatedSeries = useMemo(() => {
-    return [...series].sort(
-      (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-    )[0] ?? null;
-  }, [series]);
+  const canManage = actor.role === "staff" || actor.role === "admin";
 
   if (!canManage) {
     return (
@@ -84,6 +34,21 @@ export default function AssetCodeSeriesPage() {
       </div>
     );
   }
+
+  const { assetCodeSeriesService } = createAssetCodeSeriesStack();
+  const rawSeries = await assetCodeSeriesService.listSeries(actor);
+
+  const series: AssetCodeSeries[] = rawSeries.map((record) => ({
+    id: record.id,
+    name: record.name,
+    prefix: record.prefix,
+    separator: record.separator,
+    padLength: record.padLength,
+    counter: record.counter,
+    description: record.description,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  }));
 
   return (
     <div className="space-y-6">
@@ -116,76 +81,7 @@ export default function AssetCodeSeriesPage() {
         </Link>
       </div>
 
-      {loading ? (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="metric-tile">
-              <div className="h-4 w-28 animate-pulse rounded bg-muted" />
-              <div className="mt-3 h-9 w-24 animate-pulse rounded bg-muted" />
-              <div className="mt-3 h-4 w-full max-w-[16rem] animate-pulse rounded bg-muted" />
-            </div>
-          ))}
-        </section>
-      ) : (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
-          <div className="metric-tile">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-muted-foreground">จำนวนชุดรหัส</p>
-              <Boxes className="size-4 text-muted-foreground" />
-            </div>
-            <p className="metric-value">{formatNumber(series.length)}</p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              จำนวนรูปแบบรหัสที่พร้อมให้เลือกใช้ตอนสร้างครุภัณฑ์
-            </p>
-          </div>
-
-          <div className="metric-tile">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-muted-foreground">รหัสที่ใช้ไปแล้ว</p>
-              <Hash className="size-4 text-muted-foreground" />
-            </div>
-            <p className="metric-value">{formatNumber(totalUsedCodes)}</p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              ผลรวมเลขรันล่าสุดของทุกชุดรหัสที่ถูกใช้งานแล้ว
-            </p>
-          </div>
-
-          <div className="metric-tile">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-muted-foreground">ความเคลื่อนไหวล่าสุด</p>
-              <Sparkles className="size-4 text-muted-foreground" />
-            </div>
-            {latestUpdatedSeries ? (
-              <>
-                <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
-                  {latestUpdatedSeries.name}
-                </p>
-                <p className="mt-2 font-mono text-sm text-primary">
-                  {getPreviewCode(latestUpdatedSeries)}
-                </p>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  อัปเดตล่าสุดเมื่อ {formatDateTime(latestUpdatedSeries.updatedAt)}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
-                  ยังไม่มีชุดรหัส
-                </p>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  สร้างชุดรหัสแรกเพื่อเริ่มออกรหัสครุภัณฑ์อัตโนมัติจากหน้าเพิ่มครุภัณฑ์
-                </p>
-              </>
-            )}
-          </div>
-        </section>
-      )}
-
-      <AssetCodeSeriesTable
-        series={series}
-        loading={loading}
-        onDeleted={(id) => setSeries((current) => current.filter((item) => item.id !== id))}
-      />
+      <AssetSeriesPageClient initialSeries={series} />
     </div>
   );
 }
