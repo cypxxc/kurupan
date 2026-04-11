@@ -187,6 +187,10 @@ export const assetIdParamsSchema = z.object({
   id: positiveIntegerIdSchema,
 });
 
+export const assetDetailQuerySchema = z.object({
+  includeActivity: z.coerce.boolean().optional().default(true),
+});
+
 const assetKeptImageIdsSchema = z.array(positiveIntegerIdSchema).max(ASSET_IMAGE_MAX_COUNT);
 
 function parseJsonFormField<T>(value: FormDataEntryValue | null, fallback: T, schema: z.ZodType<T>) {
@@ -276,3 +280,4 @@ export async function parseAssetMultipartRequest<T>(
 export type AssetListQuery = z.infer<typeof assetListQuerySchema>;
 export type AssetCreateInput = z.infer<typeof assetCreateSchema>;
 export type AssetUpdateInput = z.infer<typeof assetUpdateSchema>;
+export type AssetDetailQuery = z.infer<typeof assetDetailQuerySchema>;

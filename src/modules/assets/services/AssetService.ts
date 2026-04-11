@@ -9,6 +9,8 @@ import type {
 import type { ActorContext } from "@/types/auth";
 import { AssetCodeSeriesRepository } from "@/modules/asset-code-series/repositories/AssetCodeSeriesRepository";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
+import { revalidateAssetFieldOptionsCache } from "@/modules/assets/asset-field-options-cache";
+import { revalidateAssetDashboardCache } from "@/modules/dashboard/dashboard-cache";
 
 import { AssetPolicy } from "../policies/AssetPolicy";
 import { AssetImageRepository } from "../repositories/AssetImageRepository";
@@ -45,16 +47,24 @@ export class AssetService {
     return this.assetRepository.getDashboardSummary();
   }
 
-  async getAssetById(id: number) {
+  async getAssetById(
+    id: number,
+    options: {
+      includeImages?: boolean;
+      includeActivity?: boolean;
+    } = {},
+  ) {
     const asset = await this.assetRepository.findById(id);
 
     if (!asset) {
       throw new NotFoundError("ไม่พบครุภัณฑ์", { assetId: id });
     }
 
+    const includeImages = options.includeImages ?? true;
+    const includeActivity = options.includeActivity ?? true;
     const [images, activity] = await Promise.all([
-      this.assetImageRepository.findByAssetId(id),
-      this.assetRepository.findActivityByAssetId(id),
+      includeImages ? this.assetImageRepository.findByAssetId(id) : Promise.resolve([]),
+      includeActivity ? this.assetRepository.findActivityByAssetId(id) : Promise.resolve([]),
     ]);
 
     return {
@@ -75,7 +85,7 @@ export class AssetService {
 
     const seriesId = input.assetCodeSeriesId;
 
-    return withTransactionContext(async (ctx) => {
+    const createdAsset = await withTransactionContext(async (ctx) => {
       const claimedSeriesBefore =
         seriesId !== null ? await ctx.assetCodeSeriesRepo.findById(seriesId) : null;
 
@@ -137,6 +147,11 @@ export class AssetService {
 
       return createdAsset;
     });
+
+    revalidateAssetDashboardCache();
+    revalidateAssetFieldOptionsCache();
+
+    return createdAsset;
   }
 
   async updateAsset(
@@ -150,7 +165,7 @@ export class AssetService {
   ) {
     this.assetPolicy.assertCanManage(actor);
 
-    const existing = await this.getAssetById(id);
+    const existing = await this.getAssetById(id, { includeActivity: false });
 
     if (input.assetCode && input.assetCode !== existing.assetCode) {
       const duplicate = await this.assetRepository.findByAssetCode(input.assetCode);
@@ -171,7 +186,7 @@ export class AssetService {
       ? this.buildNextImageState(existing.images, imageSync.keptImageIds, imageSync.newImages)
       : null;
 
-    return withTransactionContext(async (ctx) => {
+    const result = await withTransactionContext(async (ctx) => {
       const updated = await ctx.assetRepo.updateById(id, input);
 
       if (!updated) {
@@ -202,14 +217,19 @@ export class AssetService {
         removedImages: imageState?.removedImages ?? [],
       };
     });
+
+    revalidateAssetDashboardCache();
+    revalidateAssetFieldOptionsCache();
+
+    return result;
   }
 
   async deleteAsset(actor: ActorContext, id: number) {
     this.assetPolicy.assertCanManage(actor);
 
-    const existing = await this.getAssetById(id);
+    const existing = await this.getAssetById(id, { includeActivity: false });
 
-    return withTransactionContext(async (ctx) => {
+    const result = await withTransactionContext(async (ctx) => {
       const borrowRequestItemCount = await ctx.assetRepo.countBorrowRequestItemsByAssetId(id);
 
       if (borrowRequestItemCount > 0) {
@@ -241,6 +261,11 @@ export class AssetService {
         removedImages: existing.images,
       };
     });
+
+    revalidateAssetDashboardCache();
+    revalidateAssetFieldOptionsCache();
+
+    return result;
   }
 
   private buildNextImageState(

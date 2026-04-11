@@ -14,7 +14,15 @@ import type { NotificationItem, NotificationSSEPayload } from "@/types/notificat
 
 const DEFAULT_LIMIT = 30;
 
-export function useNotifications(limit = DEFAULT_LIMIT) {
+type UseNotificationsOptions = {
+  limit?: number;
+  realtimeEnabled?: boolean;
+};
+
+export function useNotifications({
+  limit = DEFAULT_LIMIT,
+  realtimeEnabled = false,
+}: UseNotificationsOptions = {}) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(true);
@@ -93,6 +101,18 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
   });
 
   useEffect(() => {
+    if (realtimeEnabled) {
+      return;
+    }
+
+    void loadUnreadCount();
+  }, [loadUnreadCount, realtimeEnabled]);
+
+  useEffect(() => {
+    if (!realtimeEnabled) {
+      return;
+    }
+
     const eventSource = new EventSource("/api/notifications/stream");
     const fallbackTimer = window.setTimeout(() => {
       if (!hasReceivedInitialCountRef.current) {
@@ -109,7 +129,7 @@ export function useNotifications(limit = DEFAULT_LIMIT) {
       window.clearTimeout(fallbackTimer);
       eventSource.close();
     };
-  }, [loadUnreadCount]);
+  }, [loadUnreadCount, realtimeEnabled]);
 
   const markRead = useCallback(
     async (id: number) => {

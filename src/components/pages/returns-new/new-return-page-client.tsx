@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,6 @@ import { useI18n } from "@/components/providers/i18n-provider";
 import { ReturnItemsTable } from "@/components/pages/returns-new/return-items-table";
 import { ReturnPermissionDenied } from "@/components/pages/returns-new/return-permission-denied";
 import { ReturnRequestDetails } from "@/components/pages/returns-new/return-request-details";
-import { buildReturnedQtyMap } from "@/components/pages/returns-new/return-form-helpers";
 import { ReturnSummarySidebar } from "@/components/pages/returns-new/return-summary-sidebar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,12 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { BorrowRequestDetail } from "@/types/borrow-requests";
 import {
   fromDateTimeLocalValue,
   toDateTimeLocalValue,
+  type ReturnPreparationData,
   type ReturnFormItem,
-  type ReturnTransaction,
 } from "@/types/returns";
 
 export function NewReturnPageClient() {
@@ -38,122 +36,73 @@ export function NewReturnPageClient() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [eligibleRequests, setEligibleRequests] = useState<BorrowRequestDetail[]>([]);
-  const [selectedBorrowRequestId, setSelectedBorrowRequestId] = useState("");
-  const [selectedRequest, setSelectedRequest] = useState<BorrowRequestDetail | null>(null);
+  const [eligibleRequests, setEligibleRequests] = useState<
+    ReturnPreparationData["eligibleRequests"]
+  >([]);
+  const [selectedBorrowRequestId, setSelectedBorrowRequestId] = useState(
+    () => searchParams.get("borrowRequestId") ?? "",
+  );
+  const [selectedRequest, setSelectedRequest] = useState<ReturnPreparationData["selectedRequest"]>(
+    null,
+  );
   const [returnItems, setReturnItems] = useState<ReturnFormItem[]>([]);
   const [note, setNote] = useState("");
   const [returnedAt, setReturnedAt] = useState(toDateTimeLocalValue());
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const hasLoadedPreparationRef = useRef(false);
 
   const canManage = user?.role === "staff" || user?.role === "admin";
 
   useEffect(() => {
-    async function loadEligibleRequests() {
-      setLoadingRequests(true);
-
-      try {
-        const [approvedRequests, partiallyApprovedRequests, partiallyReturnedRequests] =
-          await Promise.all([
-            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
-              query: { status: "approved" },
-            }),
-            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
-              query: { status: "partially_approved" },
-            }),
-            apiClient.get<BorrowRequestDetail[]>("/api/borrow-requests", {
-              query: { status: "partially_returned" },
-            }),
-          ]);
-
-        const merged = [
-          ...approvedRequests,
-          ...partiallyApprovedRequests,
-          ...partiallyReturnedRequests,
-        ]
-          .filter(
-            (request, index, allRequests) =>
-              allRequests.findIndex((candidate) => candidate.id === request.id) === index,
-          )
-          .sort((left, right) => right.id - left.id);
-
-        setEligibleRequests(merged);
-
-        const preselectedRequestId = searchParams.get("borrowRequestId");
-        if (preselectedRequestId) {
-          setSelectedBorrowRequestId(preselectedRequestId);
-        }
-      } catch (error) {
-        toast.error(getApiErrorMessage(error, t("returnsNew.loadEligibleError")));
-        setEligibleRequests([]);
-      } finally {
-        setLoadingRequests(false);
-      }
-    }
-
-    if (canManage) {
-      void loadEligibleRequests();
-    } else {
-      setLoadingRequests(false);
-    }
-  }, [canManage, searchParams, t]);
+    setSelectedBorrowRequestId(searchParams.get("borrowRequestId") ?? "");
+  }, [searchParams]);
 
   useEffect(() => {
-    async function loadSelectedRequest() {
-      if (!selectedBorrowRequestId) {
-        setSelectedRequest(null);
-        setReturnItems([]);
-        return;
-      }
-
-      setLoadingItems(true);
+    async function loadPreparationData() {
+      const loadingSelection = hasLoadedPreparationRef.current;
+      setLoadingRequests(!loadingSelection);
+      setLoadingItems(loadingSelection);
 
       try {
-        const [requestData, returnsData] = await Promise.all([
-          apiClient.get<BorrowRequestDetail>(`/api/borrow-requests/${selectedBorrowRequestId}`),
-          apiClient.get<ReturnTransaction[]>("/api/returns", {
-            query: { borrowRequestId: selectedBorrowRequestId },
-          }),
-        ]);
+        const data = await apiClient.get<ReturnPreparationData>("/api/returns/new-data", {
+          query: selectedBorrowRequestId
+            ? { borrowRequestId: selectedBorrowRequestId }
+            : undefined,
+        });
 
-        const returnedQtyMap = buildReturnedQtyMap(returnsData);
-        const nextItems: ReturnFormItem[] = requestData.items
-          .map((item) => {
-            const approvedQty = item.approvedQty ?? 0;
-            const returnedQty = returnedQtyMap.get(item.id) ?? 0;
-            const remainingQty = Math.max(0, approvedQty - returnedQty);
-
-            return {
-              borrowRequestItemId: item.id,
-              assetId: item.assetId,
-              assetCode: item.assetCode,
-              assetName: item.assetName,
-              approvedQty,
-              returnedQty,
-              remainingQty,
-              selected: remainingQty > 0,
-              returnQty: remainingQty > 0 ? remainingQty : 0,
-              condition: "good" as const,
-              note: "",
-            };
-          })
-          .filter((item) => item.remainingQty > 0);
-
-        setSelectedRequest(requestData);
-        setReturnItems(nextItems);
+        setEligibleRequests(data.eligibleRequests);
+        setSelectedRequest(data.selectedRequest);
+        setReturnItems(data.returnItems);
+        hasLoadedPreparationRef.current = true;
       } catch (error) {
-        toast.error(getApiErrorMessage(error, t("returnsNew.loadItemsError")));
+        toast.error(
+          getApiErrorMessage(
+            error,
+            loadingSelection
+              ? t("returnsNew.loadItemsError")
+              : t("returnsNew.loadEligibleError"),
+          ),
+        );
+        if (!loadingSelection) {
+          setEligibleRequests([]);
+        }
         setSelectedRequest(null);
         setReturnItems([]);
       } finally {
+        setLoadingRequests(false);
         setLoadingItems(false);
       }
     }
 
-    void loadSelectedRequest();
-  }, [selectedBorrowRequestId, t]);
+    if (canManage) {
+      void loadPreparationData();
+    } else {
+      setLoadingRequests(false);
+      setLoadingItems(false);
+    }
+  }, [canManage, selectedBorrowRequestId, t]);
 
   const activeItems = useMemo(
     () => returnItems.filter((item) => item.selected && item.returnQty > 0),
@@ -224,6 +173,7 @@ export function NewReturnPageClient() {
     <div className="space-y-6">
       <Link
         href="/returns"
+        prefetch={false}
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit gap-2")}
       >
         <ArrowLeft className="size-4" />
@@ -290,7 +240,7 @@ export function NewReturnPageClient() {
           />
 
           <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <Link href="/returns" className={buttonVariants({ variant: "outline" })}>
+            <Link href="/returns" prefetch={false} className={buttonVariants({ variant: "outline" })}>
               {t("returnsNew.actions.cancel")}
             </Link>
             <Button

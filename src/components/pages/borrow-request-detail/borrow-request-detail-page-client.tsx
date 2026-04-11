@@ -46,57 +46,38 @@ function getReturnTo(searchParams: ReadonlyURLSearchParams) {
   return returnTo;
 }
 
-export function BorrowRequestDetailPageClient() {
+type BorrowRequestDetailPageClientProps = {
+  initialRequest: BorrowRequestDetail | null;
+  initialTimeline: HistoryEvent[];
+};
+
+export function BorrowRequestDetailPageClient({
+  initialRequest,
+  initialTimeline,
+}: BorrowRequestDetailPageClientProps) {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const [request, setRequest] = useState<BorrowRequestDetail | null>(null);
-  const [timeline, setTimeline] = useState<HistoryEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingTimeline, setLoadingTimeline] = useState(true);
+  const [request, setRequest] = useState<BorrowRequestDetail | null>(initialRequest);
+  const [timeline, setTimeline] = useState<HistoryEvent[]>(initialTimeline);
+  const [loading, setLoading] = useState(false);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [dialogAction, setDialogAction] = useState<DialogAction>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [approvalItems, setApprovalItems] = useState<BorrowRequestApprovalItem[]>([]);
+  const [approvalItems, setApprovalItems] = useState<BorrowRequestApprovalItem[]>(
+    initialRequest ? createApprovalItems(initialRequest.items) : [],
+  );
 
   const canStaffManage = user?.role === "staff" || user?.role === "admin";
 
   useEffect(() => {
-    async function loadRequest() {
-      setLoading(true);
-
-      try {
-        const data = await apiClient.get<BorrowRequestDetail>(`/api/borrow-requests/${id}`);
-        setRequest(data);
-        setApprovalItems(createApprovalItems(data.items));
-      } catch (error) {
-        toast.error(getApiErrorMessage(error, "An error occurred while loading the request."));
-        setRequest(null);
-        setApprovalItems([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    async function loadTimeline() {
-      setLoadingTimeline(true);
-
-      try {
-        const params = new URLSearchParams({
-          entityType: "borrow_request",
-          entityId: id,
-        });
-        const data = await apiClient.get<HistoryEvent[]>("/api/history", { query: params });
-        setTimeline(data);
-      } catch {
-        setTimeline([]);
-      } finally {
-        setLoadingTimeline(false);
-      }
-    }
-
-    void Promise.all([loadRequest(), loadTimeline()]);
-  }, [id]);
+    setRequest(initialRequest);
+    setTimeline(initialTimeline);
+    setApprovalItems(initialRequest ? createApprovalItems(initialRequest.items) : []);
+    setLoading(false);
+    setLoadingTimeline(false);
+  }, [id, initialRequest, initialTimeline]);
 
   const canApproveReject = canStaffManage && request?.status === "pending";
   const selectedApprovalCount = approvalItems.filter((item) => item.selected).length;

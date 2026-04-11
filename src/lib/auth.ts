@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isProductionEnvironment } from "@/lib/env/safety";
 import type { ActorContext } from "@/types/auth";
 
 export type SessionUser = ActorContext;
@@ -106,7 +107,7 @@ export function setSessionCookie(response: NextResponse, sessionId: string) {
   response.cookies.set(SESSION_COOKIE_NAME, sessionId, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.APP_ENV === "production",
+    secure: isProductionEnvironment(),
     path: "/",
     maxAge: getSessionTtlHours() * 60 * 60,
   });
@@ -116,7 +117,7 @@ export function clearSessionCookie(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.APP_ENV === "production",
+    secure: isProductionEnvironment(),
     path: "/",
     maxAge: 0,
   });

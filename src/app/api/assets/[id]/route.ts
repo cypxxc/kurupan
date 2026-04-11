@@ -1,27 +1,32 @@
+import type { NextRequest } from "next/server";
+
 import { successResponse } from "@/lib/http/response";
 import { requireCurrentActor } from "@/lib/http/request-context";
 import { withErrorHandler } from "@/lib/http/withErrorHandler";
 import { logger } from "@/lib/logger";
 import { deleteAssetImageFiles, saveAssetImageFiles } from "@/lib/uploads/asset-images";
 import {
+  assetDetailQuerySchema,
   assetIdParamsSchema,
   assetUpdateSchema,
   parseAssetMultipartRequest,
 } from "@/lib/validators/assets";
-import { parseJsonBody, parseRouteParams } from "@/lib/validators/http";
+import { parseJsonBody, parseRouteParams, parseSearchParams } from "@/lib/validators/http";
 import { createAssetStack } from "@/modules/assets/createAssetStack";
+import { serializeAssetDetail } from "@/modules/assets/serializers";
 
 export const GET = withErrorHandler(
   async (
-    request: Request,
+    request: NextRequest,
     context: RouteContext<"/api/assets/[id]">,
   ) => {
     await requireCurrentActor(request);
     const { id } = await parseRouteParams(context.params, assetIdParamsSchema);
+    const { includeActivity } = parseSearchParams(request, assetDetailQuerySchema);
     const { assetService } = createAssetStack();
-    const asset = await assetService.getAssetById(id);
+    const asset = await assetService.getAssetById(id, { includeActivity });
 
-    return successResponse(asset);
+    return successResponse(serializeAssetDetail(asset));
   },
 );
 

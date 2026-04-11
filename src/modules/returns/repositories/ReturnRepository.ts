@@ -14,6 +14,7 @@ import {
   resolvePagination,
   type PaginatedResult,
 } from "@/lib/pagination";
+import { measureAsyncOperation } from "@/lib/performance";
 import type {
   ReturnCreateInput,
   ReturnListQuery,
@@ -80,43 +81,66 @@ export class ReturnRepository {
     filters: ReturnListQuery & { borrowerExternalUserId?: string },
     defaultLimit = 10,
   ): Promise<PaginatedResult<ReturnTransactionDetail>> {
-    const pagination = resolvePagination(filters, defaultLimit);
-    const conditions = this.buildConditions(filters);
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    return measureAsyncOperation(
+      "db.returns.findPage",
+      async () => {
+        const pagination = resolvePagination(filters, defaultLimit);
+        const conditions = this.buildConditions(filters);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countRow] = await this.db
-      .select({ total: count() })
-      .from(returnTransactions)
-      .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
-      .where(whereClause);
+        const [countRow] = await this.db
+          .select({ total: count() })
+          .from(returnTransactions)
+          .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
+          .where(whereClause);
 
-    const query = this.db
-      .select({ record: returnTransactions })
-      .from(returnTransactions)
-      .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
-      .orderBy(desc(returnTransactions.returnedAt), desc(returnTransactions.id))
-      .limit(pagination.limit)
-      .offset(pagination.offset);
+        const query = this.db
+          .select({ record: returnTransactions })
+          .from(returnTransactions)
+          .innerJoin(borrowRequests, eq(returnTransactions.borrowRequestId, borrowRequests.id))
+          .orderBy(desc(returnTransactions.returnedAt), desc(returnTransactions.id))
+          .limit(pagination.limit)
+          .offset(pagination.offset);
 
-    const rows = whereClause ? await query.where(whereClause) : await query;
-    const items = await this.attachRelations(rows.map((row) => row.record));
+        const rows = whereClause ? await query.where(whereClause) : await query;
+        const items = await this.attachRelations(rows.map((row) => row.record));
 
-    return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
+        return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
+      },
+      {
+        context: {
+          page: filters.page,
+          limit: filters.limit,
+          borrowRequestId: filters.borrowRequestId,
+          borrowerExternalUserId: filters.borrowerExternalUserId,
+        },
+      },
+    );
   }
 
   async findById(id: number): Promise<ReturnTransactionDetail | null> {
-    const [row] = await this.db
-      .select()
-      .from(returnTransactions)
-      .where(eq(returnTransactions.id, id))
-      .limit(1);
+    return measureAsyncOperation(
+      "db.returns.findById",
+      async () => {
+        const [row] = await this.db
+          .select()
+          .from(returnTransactions)
+          .where(eq(returnTransactions.id, id))
+          .limit(1);
 
-    if (!row) {
-      return null;
-    }
+        if (!row) {
+          return null;
+        }
 
-    const [detail] = await this.attachRelations([row]);
-    return detail ?? null;
+        const [detail] = await this.attachRelations([row]);
+        return detail ?? null;
+      },
+      {
+        context: {
+          returnTransactionId: id,
+        },
+      },
+    );
   }
 
   async findManyByIds(ids: number[]): Promise<ReturnTransactionDetail[]> {

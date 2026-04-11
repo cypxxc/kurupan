@@ -11,8 +11,16 @@ const { withTransactionContextMock } = vi.hoisted(() => ({
   withTransactionContextMock: vi.fn(),
 }));
 
+const { revalidateBorrowDashboardCacheMock } = vi.hoisted(() => ({
+  revalidateBorrowDashboardCacheMock: vi.fn(),
+}));
+
 vi.mock("@/db/postgres", () => ({
   withTransactionContext: withTransactionContextMock,
+}));
+
+vi.mock("@/modules/dashboard/dashboard-cache", () => ({
+  revalidateBorrowDashboardCache: revalidateBorrowDashboardCacheMock,
 }));
 
 function buildRequest(status: BorrowRequestDetail["status"]): BorrowRequestDetail {
@@ -159,5 +167,6 @@ describe("BorrowRequestService.approveBorrowRequest", () => {
       "approved",
     );
     expect(txAuditService.record).toHaveBeenCalledOnce();
+    expect(revalidateBorrowDashboardCacheMock).toHaveBeenCalledOnce();
   });
 });

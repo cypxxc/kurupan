@@ -3,7 +3,7 @@ import {
   asc,
   count,
   eq,
-  ilike,
+  isNull,
   or,
   sql,
   type InferSelectModel,
@@ -17,6 +17,7 @@ import {
   resolvePagination,
   type PaginatedResult,
 } from "@/lib/pagination";
+import { measureAsyncOperation } from "@/lib/performance";
 import type { UserListQuery } from "@/lib/validators/users";
 import type { ManagedUser } from "@/types/users";
 
@@ -39,6 +40,24 @@ export type ManagedUserSummary = {
   adminUsers: number;
   staffUsers: number;
 };
+
+const managedUserSearchDocument = sql<string>`lower(
+  ${localAuthUsers.username}
+  || ' '
+  || ${localAuthUsers.fullName}
+  || ' '
+  || ${localAuthUsers.externalUserId}
+  || ' '
+  || coalesce(${localAuthUsers.email}, '')
+  || ' '
+  || coalesce(${localAuthUsers.employeeCode}, '')
+  || ' '
+  || coalesce(${localAuthUsers.department}, '')
+)`;
+
+function buildSearchPattern(search: string) {
+  return `%${search.trim().toLowerCase()}%`;
+}
 
 function mapRecord(record: InferSelectModel<typeof localAuthUsers>): LocalAuthUser {
   return {
@@ -110,17 +129,9 @@ export class LocalAuthUserRepository {
       .select()
       .from(localAuthUsers);
 
-    const records = filters?.search
-      ? await query.where(
-          or(
-            ilike(localAuthUsers.username, `%${filters.search}%`),
-            ilike(localAuthUsers.fullName, `%${filters.search}%`),
-            ilike(localAuthUsers.externalUserId, `%${filters.search}%`),
-            ilike(localAuthUsers.email, `%${filters.search}%`),
-            ilike(localAuthUsers.employeeCode, `%${filters.search}%`),
-            ilike(localAuthUsers.department, `%${filters.search}%`),
-          ),
-        )
+    const searchTerm = filters?.search?.trim() ?? "";
+    const records = searchTerm
+      ? await query.where(sql`${managedUserSearchDocument} like ${buildSearchPattern(searchTerm)}`)
       : await query;
 
     return records.map(mapRecord);
@@ -130,66 +141,82 @@ export class LocalAuthUserRepository {
     filters: UserListQuery,
     defaultLimit = 10,
   ): Promise<PaginatedResult<ManagedUser>> {
-    const pagination = resolvePagination(filters, defaultLimit);
-    const conditions = this.buildManagedUserConditions(filters);
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const baseCountQuery = this.db
-      .select({ total: count() })
-      .from(localAuthUsers)
-      .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId));
-    const baseListQuery = this.db
-      .select({
-        externalUserId: localAuthUsers.externalUserId,
-        username: localAuthUsers.username,
-        fullName: localAuthUsers.fullName,
-        email: localAuthUsers.email,
-        employeeCode: localAuthUsers.employeeCode,
-        department: localAuthUsers.department,
-        role: sql<ManagedUser["role"]>`coalesce(${userAccess.role}::text, 'borrower')`,
-        isActive: sql<boolean>`coalesce(${userAccess.isActive}, ${localAuthUsers.isActive})`,
-        grantedByExternalUserId: userAccess.grantedByExternalUserId,
-      })
-      .from(localAuthUsers)
-      .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId))
-      .orderBy(asc(localAuthUsers.fullName), asc(localAuthUsers.externalUserId))
-      .limit(pagination.limit)
-      .offset(pagination.offset);
+    return measureAsyncOperation(
+      "db.users.findManagedUserPage",
+      async () => {
+        const pagination = resolvePagination(filters, defaultLimit);
+        const conditions = this.buildManagedUserConditions(filters);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        const baseCountQuery = this.db
+          .select({ total: count() })
+          .from(localAuthUsers)
+          .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId));
+        const baseListQuery = this.db
+          .select({
+            externalUserId: localAuthUsers.externalUserId,
+            username: localAuthUsers.username,
+            fullName: localAuthUsers.fullName,
+            email: localAuthUsers.email,
+            employeeCode: localAuthUsers.employeeCode,
+            department: localAuthUsers.department,
+            role: sql<ManagedUser["role"]>`coalesce(${userAccess.role}::text, 'borrower')`,
+            isActive: sql<boolean>`coalesce(${userAccess.isActive}, ${localAuthUsers.isActive})`,
+            grantedByExternalUserId: userAccess.grantedByExternalUserId,
+          })
+          .from(localAuthUsers)
+          .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId))
+          .orderBy(asc(localAuthUsers.fullName), asc(localAuthUsers.externalUserId))
+          .limit(pagination.limit)
+          .offset(pagination.offset);
 
-    const [[countRow], rows] = await Promise.all([
-      whereClause ? baseCountQuery.where(whereClause) : baseCountQuery,
-      whereClause ? baseListQuery.where(whereClause) : baseListQuery,
-    ]);
+        const [[countRow], rows] = await Promise.all([
+          whereClause ? baseCountQuery.where(whereClause) : baseCountQuery,
+          whereClause ? baseListQuery.where(whereClause) : baseListQuery,
+        ]);
 
-    return buildPaginatedResult(
-      rows.map(mapManagedUserRecord),
-      Number(countRow?.total ?? 0),
-      pagination,
+        return buildPaginatedResult(
+          rows.map(mapManagedUserRecord),
+          Number(countRow?.total ?? 0),
+          pagination,
+        );
+      },
+      {
+        context: {
+          page: filters.page,
+          limit: filters.limit,
+          role: filters.role,
+          isActive: filters.isActive,
+          search: filters.search,
+        },
+      },
     );
   }
 
   async getManagedUserSummary(): Promise<ManagedUserSummary> {
-    const [row] = await this.db
-      .select({
-        totalUsers: count(),
-        activeUsers:
-          sql<number>`count(*) filter (where coalesce(${userAccess.isActive}, ${localAuthUsers.isActive}) = true)`,
-        inactiveUsers:
-          sql<number>`count(*) filter (where coalesce(${userAccess.isActive}, ${localAuthUsers.isActive}) = false)`,
-        adminUsers:
-          sql<number>`count(*) filter (where coalesce(${userAccess.role}::text, 'borrower') = 'admin')`,
-        staffUsers:
-          sql<number>`count(*) filter (where coalesce(${userAccess.role}::text, 'borrower') = 'staff')`,
-      })
-      .from(localAuthUsers)
-      .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId));
+    return measureAsyncOperation("db.users.getManagedUserSummary", async () => {
+      const [row] = await this.db
+        .select({
+          totalUsers: count(),
+          activeUsers:
+            sql<number>`count(*) filter (where coalesce(${userAccess.isActive}, ${localAuthUsers.isActive}) = true)`,
+          inactiveUsers:
+            sql<number>`count(*) filter (where coalesce(${userAccess.isActive}, ${localAuthUsers.isActive}) = false)`,
+          adminUsers:
+            sql<number>`count(*) filter (where coalesce(${userAccess.role}::text, 'borrower') = 'admin')`,
+          staffUsers:
+            sql<number>`count(*) filter (where coalesce(${userAccess.role}::text, 'borrower') = 'staff')`,
+        })
+        .from(localAuthUsers)
+        .leftJoin(userAccess, eq(localAuthUsers.externalUserId, userAccess.externalUserId));
 
-    return {
-      totalUsers: Number(row?.totalUsers ?? 0),
-      activeUsers: Number(row?.activeUsers ?? 0),
-      inactiveUsers: Number(row?.inactiveUsers ?? 0),
-      adminUsers: Number(row?.adminUsers ?? 0),
-      staffUsers: Number(row?.staffUsers ?? 0),
-    };
+      return {
+        totalUsers: Number(row?.totalUsers ?? 0),
+        activeUsers: Number(row?.activeUsers ?? 0),
+        inactiveUsers: Number(row?.inactiveUsers ?? 0),
+        adminUsers: Number(row?.adminUsers ?? 0),
+        staffUsers: Number(row?.staffUsers ?? 0),
+      };
+    });
   }
 
   async create(input: {
@@ -268,31 +295,33 @@ export class LocalAuthUserRepository {
   private buildManagedUserConditions(filters: UserListQuery) {
     const conditions: SQL<unknown>[] = [];
     const searchTerm = filters.search?.trim() ?? "";
-    const resolvedRole = sql<ManagedUser["role"]>`coalesce(${userAccess.role}::text, 'borrower')`;
-    const resolvedIsActive =
-      sql<boolean>`coalesce(${userAccess.isActive}, ${localAuthUsers.isActive})`;
 
     if (filters.role) {
-      conditions.push(sql`${resolvedRole} = ${filters.role}`);
+      if (filters.role === "borrower") {
+        conditions.push(
+          or(eq(userAccess.role, "borrower"), isNull(userAccess.externalUserId)) ?? sql`false`,
+        );
+      } else {
+        conditions.push(eq(userAccess.role, filters.role));
+      }
     }
 
     if (filters.isActive !== undefined) {
-      conditions.push(sql`${resolvedIsActive} = ${filters.isActive}`);
+      conditions.push(
+        filters.isActive
+          ? (or(
+              eq(userAccess.isActive, true),
+              and(isNull(userAccess.externalUserId), eq(localAuthUsers.isActive, true)),
+            ) ?? sql`false`)
+          : (or(
+              eq(userAccess.isActive, false),
+              and(isNull(userAccess.externalUserId), eq(localAuthUsers.isActive, false)),
+            ) ?? sql`false`),
+      );
     }
 
     if (searchTerm) {
-      const searchPattern = `%${searchTerm}%`;
-
-      conditions.push(
-        or(
-          ilike(localAuthUsers.username, searchPattern),
-          ilike(localAuthUsers.fullName, searchPattern),
-          ilike(localAuthUsers.externalUserId, searchPattern),
-          ilike(localAuthUsers.email, searchPattern),
-          ilike(localAuthUsers.employeeCode, searchPattern),
-          ilike(localAuthUsers.department, searchPattern),
-        ) ?? sql`false`,
-      );
+      conditions.push(sql`${managedUserSearchDocument} like ${buildSearchPattern(searchTerm)}`);
     }
 
     return conditions;

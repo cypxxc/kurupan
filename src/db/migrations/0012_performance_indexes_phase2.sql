@@ -1,0 +1,4 @@
+CREATE INDEX "borrow_requests_status_created_at_id_idx" ON "borrow_requests" USING btree ("status","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "borrow_requests_borrower_created_at_id_idx" ON "borrow_requests" USING btree ("borrower_external_user_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "borrow_requests_borrower_status_created_at_id_idx" ON "borrow_requests" USING btree ("borrower_external_user_id","status","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "notifications_recipient_created_at_id_idx" ON "notifications" USING btree ("recipient_external_user_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);

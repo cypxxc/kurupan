@@ -232,6 +232,13 @@ a {
   .empty-state {
     @apply rounded-sm border border-dashed border-border bg-card px-6 py-14 text-center shadow-[0_10px_26px_-22px_rgba(15,23,42,0.1)];
   }
+
+  .toaster {
+    --normal-bg: var(--popover);
+    --normal-text: var(--popover-foreground);
+    --normal-border: var(--border);
+    --border-radius: var(--radius);
+  }
 }
 
 @layer utilities {
@@ -340,6 +347,158 @@ a {
     .dashboard-chart-progress[data-chart-ready="true"] {
       animation: dashboard-chart-fill 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
+  }
+
+  .dashboard-accent-pending {
+    @apply bg-chart-1 fill-chart-1 text-chart-1;
+  }
+
+  .dashboard-accent-approved {
+    @apply bg-chart-3 fill-chart-3 text-chart-3;
+  }
+
+  .dashboard-accent-partially-approved {
+    @apply bg-chart-5 fill-chart-5 text-chart-5;
+  }
+
+  .dashboard-accent-rejected {
+    @apply bg-destructive fill-destructive text-destructive;
+  }
+
+  .dashboard-accent-cancelled {
+    @apply bg-muted-foreground fill-muted-foreground text-muted-foreground;
+  }
+
+  .dashboard-accent-partially-returned {
+    @apply bg-chart-4 fill-chart-4 text-chart-4;
+  }
+
+  .dashboard-accent-returned {
+    @apply bg-chart-2 fill-chart-2 text-chart-2;
+  }
+
+  .dashboard-delay-120 {
+    animation-delay: 120ms;
+  }
+
+  .dashboard-delay-210 {
+    animation-delay: 210ms;
+  }
+
+  .dashboard-delay-220 {
+    animation-delay: 220ms;
+  }
+
+  .dashboard-delay-280 {
+    animation-delay: 280ms;
+  }
+
+  .dashboard-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  .dashboard-delay-310 {
+    animation-delay: 310ms;
+  }
+
+  .dashboard-delay-350 {
+    animation-delay: 350ms;
+  }
+
+  .dashboard-delay-360 {
+    animation-delay: 360ms;
+  }
+
+  .dashboard-delay-390 {
+    animation-delay: 390ms;
+  }
+
+  .dashboard-delay-400 {
+    animation-delay: 400ms;
+  }
+
+  .dashboard-delay-420 {
+    animation-delay: 420ms;
+  }
+
+  .dashboard-delay-430 {
+    animation-delay: 430ms;
+  }
+
+  .dashboard-delay-480 {
+    animation-delay: 480ms;
+  }
+
+  .dashboard-delay-490 {
+    animation-delay: 490ms;
+  }
+
+  .dashboard-delay-500 {
+    animation-delay: 500ms;
+  }
+
+  .dashboard-delay-560 {
+    animation-delay: 560ms;
+  }
+
+  .dashboard-delay-570 {
+    animation-delay: 570ms;
+  }
+
+  .dashboard-delay-580 {
+    animation-delay: 580ms;
+  }
+
+  .dashboard-delay-630 {
+    animation-delay: 630ms;
+  }
+
+  .dashboard-delay-640 {
+    animation-delay: 640ms;
+  }
+
+  .dashboard-delay-660 {
+    animation-delay: 660ms;
+  }
+
+  .dashboard-delay-670 {
+    animation-delay: 670ms;
+  }
+
+  .dashboard-delay-700 {
+    animation-delay: 700ms;
+  }
+
+  .dashboard-delay-710 {
+    animation-delay: 710ms;
+  }
+
+  .dashboard-delay-760 {
+    animation-delay: 760ms;
+  }
+
+  .dashboard-delay-780 {
+    animation-delay: 780ms;
+  }
+
+  .stock-progress {
+    appearance: none;
+    border: 0;
+  }
+
+  .stock-progress::-webkit-progress-bar {
+    background-color: transparent;
+    border-radius: inherit;
+  }
+
+  .stock-progress::-webkit-progress-value {
+    background-color: var(--primary);
+    border-radius: inherit;
+  }
+
+  .stock-progress::-moz-progress-bar {
+    background-color: var(--primary);
+    border-radius: inherit;
   }
 
   .rounded-2xl {

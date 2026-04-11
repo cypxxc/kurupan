@@ -38,6 +38,24 @@ function getPostgresPoolMax() {
   return parsePoolSize(process.env.DATABASE_POOL_MAX, defaultPoolMax);
 }
 
+function resolvePostgresSsl(databaseUrl: string) {
+  const configuredSsl = process.env.DATABASE_SSL?.trim().toLowerCase();
+
+  if (configuredSsl === "true" || configuredSsl === "1" || configuredSsl === "require") {
+    return { rejectUnauthorized: false } as const;
+  }
+
+  if (configuredSsl === "false" || configuredSsl === "0" || configuredSsl === "disable") {
+    return false;
+  }
+
+  if (process.env.APP_ENV === "production" || databaseUrl.includes("sslmode=require")) {
+    return { rejectUnauthorized: false } as const;
+  }
+
+  return false;
+}
+
 async function closePostgresClientInstance() {
   const client = globalThis.__kurupanPostgresClient;
 
@@ -80,13 +98,15 @@ function registerShutdownHooks() {
 
 export function getPostgresClient() {
   if (!globalThis.__kurupanPostgresClient) {
-    globalThis.__kurupanPostgresClient = postgres(getDatabaseUrl(), {
+    const databaseUrl = getDatabaseUrl();
+
+    globalThis.__kurupanPostgresClient = postgres(databaseUrl, {
       // Dashboard pages fan out into several parallel queries. A pool of 2 in dev
       // causes requests to queue behind each other and makes local navigations feel slow.
       max: getPostgresPoolMax(),
       idle_timeout: 20,
       connect_timeout: 10,
-      ssl: (process.env.NODE_ENV === "production" || process.env.APP_ENV === "production" || getDatabaseUrl().includes("sslmode=require")) ? { rejectUnauthorized: false } : false,
+      ssl: resolvePostgresSsl(databaseUrl),
     });
     registerShutdownHooks();
   }

@@ -6,62 +6,57 @@ import { DashboardPageFooter } from "@/components/pages/dashboard/dashboard-page
 import { DashboardRequestStatusChart } from "@/components/pages/dashboard/dashboard-request-status-chart";
 import { DashboardRequestTable } from "@/components/pages/dashboard/dashboard-request-table";
 import { DashboardUserStatsPanel } from "@/components/pages/dashboard/dashboard-user-stats-panel";
+import { measureAsyncOperation } from "@/lib/performance";
 import { getCurrentActorFromServer } from "@/lib/server-auth";
-import { createAssetStack } from "@/modules/assets/createAssetStack";
-import { createBorrowStack } from "@/modules/borrow/createBorrowStack";
-import { createUserManagementStack } from "@/modules/users/createUserManagementStack";
+import {
+  getCachedBorrowerDashboardData,
+  getCachedStaffOrAdminDashboardData,
+} from "@/modules/dashboard/dashboard-cache";
 import type { BorrowRequestStatus } from "@/types/borrow-requests";
-
-const ACTIVE_REQUEST_STATUSES: BorrowRequestStatus[] = [
-  "approved",
-  "partially_approved",
-  "partially_returned",
-];
 
 function sumRequestCounts(counts: Record<BorrowRequestStatus, number>) {
   return Object.values(counts).reduce((sum, count) => sum + count, 0);
 }
 
 export default async function DashboardPage() {
-  const actor = await getCurrentActorFromServer();
+  const actor = await measureAsyncOperation("dashboard.resolveActor", () =>
+    getCurrentActorFromServer(),
+  );
 
   if (!actor) {
     redirect("/login");
   }
 
-  const { borrowRequestService } = createBorrowStack();
-  const { assetService } = createAssetStack();
-  const { userManagementService } = createUserManagementStack();
-
   const isBorrower = actor.role === "borrower";
   const isAdmin = actor.role === "admin";
   const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin";
+  const staffOrAdminRole =
+    actor.role === "staff" ? "staff" : actor.role === "admin" ? "admin" : null;
+  const borrowerDashboardData = isBorrower
+    ? await getCachedBorrowerDashboardData(actor.externalUserId)
+    : null;
+  const staffOrAdminDashboardData = staffOrAdminRole
+    ? await getCachedStaffOrAdminDashboardData(staffOrAdminRole)
+    : null;
 
-  const [
-    requestStatusCounts,
-    recentRequests,
-    borrowerActiveRequests,
-    pendingRequests,
-    activeBorrowRequests,
-    assetSummary,
-    userSummary,
-  ] = await Promise.all([
-    borrowRequestService.getBorrowRequestStatusCounts(actor, {}),
-    isBorrower
-      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 5)
-      : Promise.resolve([]),
-    isBorrower
-      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 5, ACTIVE_REQUEST_STATUSES)
-      : Promise.resolve([]),
-    isStaffOrAdmin
-      ? borrowRequestService.listBorrowRequestSummaries(actor, { status: "pending" }, 5)
-      : Promise.resolve([]),
-    isStaffOrAdmin
-      ? borrowRequestService.listBorrowRequestSummaries(actor, {}, 8, ACTIVE_REQUEST_STATUSES)
-      : Promise.resolve([]),
-    isStaffOrAdmin ? assetService.getDashboardSummary() : Promise.resolve(null),
-    isAdmin ? userManagementService.getUserSummary(actor) : Promise.resolve(null),
-  ]);
+  const requestStatusCounts =
+    borrowerDashboardData?.requestStatusCounts ??
+    staffOrAdminDashboardData?.requestStatusCounts ??
+    {
+      pending: 0,
+      approved: 0,
+      partially_approved: 0,
+      rejected: 0,
+      cancelled: 0,
+      partially_returned: 0,
+      returned: 0,
+    };
+  const recentRequests = borrowerDashboardData?.recentRequests ?? [];
+  const borrowerActiveRequests = borrowerDashboardData?.activeBorrowRequests ?? [];
+  const pendingRequests = staffOrAdminDashboardData?.pendingRequests ?? [];
+  const activeBorrowRequests = staffOrAdminDashboardData?.activeBorrowRequests ?? [];
+  const assetSummary = staffOrAdminDashboardData?.assetSummary ?? null;
+  const userSummary = staffOrAdminDashboardData?.userSummary ?? null;
 
   const totalRequests = sumRequestCounts(requestStatusCounts);
   const activeBorrowCount =

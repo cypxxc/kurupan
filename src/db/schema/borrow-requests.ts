@@ -37,7 +37,23 @@ export const borrowRequests = pgTable(
   (table) => [
     check("borrow_requests_due_date_gte_start_date", sql`${table.dueDate} >= ${table.startDate}`),
     index("borrow_requests_status_idx").on(table.status),
+    index("borrow_requests_status_created_at_id_idx").on(
+      table.status,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
     index("borrow_requests_borrower_external_user_id_idx").on(table.borrowerExternalUserId),
+    index("borrow_requests_borrower_created_at_id_idx").on(
+      table.borrowerExternalUserId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index("borrow_requests_borrower_status_created_at_id_idx").on(
+      table.borrowerExternalUserId,
+      table.status,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
     index("borrow_requests_due_date_idx").on(table.dueDate),
   ],
 );

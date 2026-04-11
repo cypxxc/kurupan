@@ -45,5 +45,13 @@ export const assets = pgTable(
     index("assets_status_idx").on(table.status),
     index("assets_category_idx").on(table.category),
     index("assets_location_idx").on(table.location),
+    index("assets_list_order_idx").on(
+      sql`(case when ${table.availableQty} = 0 then 1 else 0 end)`,
+      table.assetCode.asc(),
+    ),
+    index("assets_search_trgm_idx").using(
+      "gin",
+      sql`(lower(${table.name} || ' ' || ${table.assetCode})) gin_trgm_ops`,
+    ),
   ],
 );

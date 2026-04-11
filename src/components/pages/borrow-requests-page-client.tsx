@@ -160,6 +160,7 @@ export function BorrowRequestsPageClient({
         </div>
         <Link
           href="/borrow-requests/new"
+          prefetch={false}
           className={cn(buttonVariants({ variant: "default" }), "gap-2")}
         >
           <Plus className="size-4" />

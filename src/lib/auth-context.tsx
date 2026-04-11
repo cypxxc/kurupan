@@ -12,6 +12,7 @@ import {
 
 import { apiClient } from "@/lib/api-client";
 import { getClientAuthProviderMode, type AuthProviderMode } from "@/lib/auth-provider";
+import { sanitizeInternalNextPath } from "@/lib/navigation";
 
 export type UserRole = "admin" | "staff" | "borrower";
 
@@ -91,7 +92,7 @@ export function AuthProvider({
   };
 
   const startSsoLogin = useCallback((nextPath = "/dashboard") => {
-    const params = new URLSearchParams({ next: nextPath });
+    const params = new URLSearchParams({ next: sanitizeInternalNextPath(nextPath) });
     window.location.assign(`/api/auth/sso/start?${params.toString()}`);
   }, []);
 

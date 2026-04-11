@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
+import { sanitizeInternalNextPath } from "@/lib/navigation";
 import { useI18n } from "@/components/providers/i18n-provider";
 
 function LoginContent() {
@@ -29,7 +30,7 @@ function LoginContent() {
   const [submitting, setSubmitting] = useState(false);
 
   const nextPath = useMemo(() => {
-    return searchParams.get("next") ?? "/dashboard";
+    return sanitizeInternalNextPath(searchParams.get("next"));
   }, [searchParams]);
 
   useEffect(() => {

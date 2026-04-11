@@ -6,6 +6,8 @@ import type { PaginatedResult } from "@/lib/pagination";
 import type { UserCreateInput, UserListQuery, UserUpdateInput } from "@/lib/validators/users";
 import type { ActorContext } from "@/types/auth";
 import type { ManagedUser } from "@/types/users";
+import { revalidateUserDashboardCache } from "@/modules/dashboard/dashboard-cache";
+import { revalidateManagedUserSummaryCache } from "@/modules/users/user-summary-cache";
 import { AccessPolicy } from "@/modules/access/policies/AccessPolicy";
 import { UserAccessRepository } from "@/modules/access/repositories/UserAccessRepository";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
@@ -81,7 +83,7 @@ export class UserManagementService {
 
     const passwordHash = await hash(input.password, 10);
 
-    return withTransactionContext(async (ctx) => {
+    const managedUser = await withTransactionContext(async (ctx) => {
       const user = await ctx.localAuthUserRepo.create({
         externalUserId,
         username: input.username,
@@ -110,6 +112,11 @@ export class UserManagementService {
 
       return managedUser;
     });
+
+    revalidateUserDashboardCache();
+    revalidateManagedUserSummaryCache();
+
+    return managedUser;
   }
 
   async updateUser(actor: ActorContext, id: string, input: UserUpdateInput): Promise<ManagedUser> {
@@ -128,7 +135,7 @@ export class UserManagementService {
 
     const localUser = await this.localAuthUserRepository.findById(existing.externalUserId);
 
-    return withTransactionContext(async (ctx) => {
+    const managedUser = await withTransactionContext(async (ctx) => {
       const updatedLocalUser = localUser
         ? await ctx.localAuthUserRepo.updateByExternalUserId(existing.externalUserId, {
             fullName: input.fullName,
@@ -169,5 +176,10 @@ export class UserManagementService {
 
       return managedUser;
     });
+
+    revalidateUserDashboardCache();
+    revalidateManagedUserSummaryCache();
+
+    return managedUser;
   }
 }

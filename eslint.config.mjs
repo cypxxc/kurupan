@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Tool-managed worktrees and local agent state are outside the active app.
+    ".claude/**",
+    ".codex/**",
+    ".windsurf/**",
   ]),
 ]);
 

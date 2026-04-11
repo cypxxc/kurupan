@@ -4,6 +4,7 @@ import { and, eq, gt, sql } from "drizzle-orm";
 
 import { getDb, type DbExecutor } from "@/db/postgres";
 import { localAuthUsers, sessions, userAccess } from "@/db/schema";
+import { measureAsyncOperation } from "@/lib/performance";
 import type { ActorContext, Role, SessionRecord } from "@/types/auth";
 
 export type ResolvedSessionActorRecord = SessionRecord & {
@@ -62,62 +63,73 @@ export class SessionRepository {
   }
 
   async findResolvedActorById(sessionId: string): Promise<ResolvedSessionActorRecord | null> {
-    const [record] = await this.db
-      .select({
-        id: sessions.id,
-        externalUserId: sessions.externalUserId,
-        effectiveRole: sessions.effectiveRole,
-        fullName: sessions.fullName,
-        email: sessions.email,
-        employeeCode: sessions.employeeCode,
-        department: sessions.department,
-        createdAt: sessions.createdAt,
-        expiresAt: sessions.expiresAt,
-        resolvedRole: sql<Role>`coalesce(${userAccess.role}::text, 'borrower')`,
-        resolvedFullName:
-          sql<string | null>`coalesce(${localAuthUsers.fullName}, ${sessions.fullName})`,
-        resolvedEmail: sql<string | null>`coalesce(${localAuthUsers.email}, ${sessions.email})`,
-        resolvedEmployeeCode:
-          sql<string | null>`coalesce(${localAuthUsers.employeeCode}, ${sessions.employeeCode})`,
-        resolvedDepartment:
-          sql<string | null>`coalesce(${localAuthUsers.department}, ${sessions.department})`,
-        isLocallyActive: sql<boolean>`coalesce(${localAuthUsers.isActive}, true)`,
-        isAccessActive: sql<boolean>`coalesce(${userAccess.isActive}, true)`,
-      })
-      .from(sessions)
-      .leftJoin(
-        localAuthUsers,
-        eq(sessions.externalUserId, localAuthUsers.externalUserId),
-      )
-      .leftJoin(userAccess, eq(sessions.externalUserId, userAccess.externalUserId))
-      .where(eq(sessions.id, sessionId))
-      .limit(1);
+    return measureAsyncOperation(
+      "db.sessions.findResolvedActorById",
+      async () => {
+        const [record] = await this.db
+          .select({
+            id: sessions.id,
+            externalUserId: sessions.externalUserId,
+            effectiveRole: sessions.effectiveRole,
+            fullName: sessions.fullName,
+            email: sessions.email,
+            employeeCode: sessions.employeeCode,
+            department: sessions.department,
+            createdAt: sessions.createdAt,
+            expiresAt: sessions.expiresAt,
+            resolvedRole: sql<Role>`coalesce(${userAccess.role}::text, 'borrower')`,
+            resolvedFullName:
+              sql<string | null>`coalesce(${localAuthUsers.fullName}, ${sessions.fullName})`,
+            resolvedEmail:
+              sql<string | null>`coalesce(${localAuthUsers.email}, ${sessions.email})`,
+            resolvedEmployeeCode:
+              sql<string | null>`coalesce(${localAuthUsers.employeeCode}, ${sessions.employeeCode})`,
+            resolvedDepartment:
+              sql<string | null>`coalesce(${localAuthUsers.department}, ${sessions.department})`,
+            isLocallyActive: sql<boolean>`coalesce(${localAuthUsers.isActive}, true)`,
+            isAccessActive: sql<boolean>`coalesce(${userAccess.isActive}, true)`,
+          })
+          .from(sessions)
+          .leftJoin(
+            localAuthUsers,
+            eq(sessions.externalUserId, localAuthUsers.externalUserId),
+          )
+          .leftJoin(userAccess, eq(sessions.externalUserId, userAccess.externalUserId))
+          .where(eq(sessions.id, sessionId))
+          .limit(1);
 
-    if (!record) {
-      return null;
-    }
+        if (!record) {
+          return null;
+        }
 
-    return {
-      id: record.id,
-      externalUserId: record.externalUserId,
-      effectiveRole: record.effectiveRole,
-      fullName: record.fullName,
-      email: record.email,
-      employeeCode: record.employeeCode,
-      department: record.department,
-      createdAt: record.createdAt,
-      expiresAt: record.expiresAt,
-      isLocallyActive: record.isLocallyActive,
-      isAccessActive: record.isAccessActive,
-      actor: {
-        externalUserId: record.externalUserId,
-        role: record.resolvedRole,
-        fullName: record.resolvedFullName ?? undefined,
-        email: record.resolvedEmail,
-        employeeCode: record.resolvedEmployeeCode,
-        department: record.resolvedDepartment,
+        return {
+          id: record.id,
+          externalUserId: record.externalUserId,
+          effectiveRole: record.effectiveRole,
+          fullName: record.fullName,
+          email: record.email,
+          employeeCode: record.employeeCode,
+          department: record.department,
+          createdAt: record.createdAt,
+          expiresAt: record.expiresAt,
+          isLocallyActive: record.isLocallyActive,
+          isAccessActive: record.isAccessActive,
+          actor: {
+            externalUserId: record.externalUserId,
+            role: record.resolvedRole,
+            fullName: record.resolvedFullName ?? undefined,
+            email: record.resolvedEmail,
+            employeeCode: record.resolvedEmployeeCode,
+            department: record.resolvedDepartment,
+          },
+        };
       },
-    };
+      {
+        context: {
+          sessionId,
+        },
+      },
+    );
   }
 
   async updateEffectiveRole(sessionId: string, role: Role) {

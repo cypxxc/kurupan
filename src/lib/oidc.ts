@@ -5,6 +5,8 @@ import type { JWTPayload } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { readCookie } from "@/lib/auth";
+import { isProductionEnvironment } from "@/lib/env/safety";
+import { sanitizeInternalNextPath } from "@/lib/navigation";
 import { parseWithSchema } from "@/lib/validators/http";
 import {
   oidcDiscoveryDocumentSchema,
@@ -36,10 +38,6 @@ type OidcConfig = {
   employeeCodeClaim: string;
   departmentClaim: string;
 };
-
-function sanitizeNextPath(nextPath: string) {
-  return nextPath.startsWith("/") ? nextPath : "/dashboard";
-}
 
 function getSessionSecret() {
   const sessionSecret = process.env.SESSION_SECRET;
@@ -123,7 +121,7 @@ export function generateOidcTransaction(nextPath: string) {
     state: randomBytes(24).toString("hex"),
     nonce: randomBytes(24).toString("hex"),
     codeVerifier: toBase64Url(randomBytes(32)),
-    nextPath: sanitizeNextPath(nextPath),
+    nextPath: sanitizeInternalNextPath(nextPath),
   };
 }
 
@@ -149,7 +147,7 @@ export async function verifyOidcTransactionCookie(cookieValue: string) {
 
   return {
     ...transaction,
-    nextPath: sanitizeNextPath(transaction.nextPath),
+    nextPath: sanitizeInternalNextPath(transaction.nextPath),
   };
 }
 
@@ -161,7 +159,7 @@ export function setOidcTransactionCookie(response: NextResponse, value: string) 
   response.cookies.set(OIDC_TRANSACTION_COOKIE_NAME, value, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.APP_ENV === "production",
+    secure: isProductionEnvironment(),
     path: "/",
     maxAge: 10 * 60,
   });
@@ -171,7 +169,7 @@ export function clearOidcTransactionCookie(response: NextResponse) {
   response.cookies.set(OIDC_TRANSACTION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.APP_ENV === "production",
+    secure: isProductionEnvironment(),
     path: "/",
     maxAge: 0,
   });

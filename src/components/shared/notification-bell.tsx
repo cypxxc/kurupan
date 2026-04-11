@@ -39,6 +39,7 @@ function resolveNotificationHref(notification: NotificationItem) {
 export function NotificationBell() {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [realtimeEnabled, setRealtimeEnabled] = useState(false);
   const {
     notifications,
     unreadCount,
@@ -46,12 +47,16 @@ export function NotificationBell() {
     loadNotifications,
     markRead,
     markAllRead,
-  } = useNotifications();
+  } = useNotifications({ realtimeEnabled });
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
 
     if (nextOpen) {
+      if (!realtimeEnabled) {
+        setRealtimeEnabled(true);
+      }
+
       void loadNotifications();
     }
   };

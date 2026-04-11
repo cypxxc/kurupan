@@ -17,6 +17,10 @@ export const returnListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+export const returnPreparationQuerySchema = z.object({
+  borrowRequestId: positiveIntegerIdSchema.optional(),
+});
+
 export const returnCreateSchema = z.object({
   borrowRequestId: positiveIntegerIdSchema,
   returnedAt: z.string().datetime().optional(),
@@ -38,5 +42,6 @@ export const returnUpdateSchema = z
   });
 
 export type ReturnListQuery = z.infer<typeof returnListQuerySchema>;
+export type ReturnPreparationQuery = z.infer<typeof returnPreparationQuerySchema>;
 export type ReturnCreateInput = z.infer<typeof returnCreateSchema>;
 export type ReturnUpdateInput = z.infer<typeof returnUpdateSchema>;

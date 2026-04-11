@@ -19,6 +19,7 @@ import type { ActorContext } from "@/types/auth";
 import { AssetRepository } from "@/modules/assets/repositories/AssetRepository";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
 import { logger } from "@/lib/logger";
+import { revalidateBorrowDashboardCache } from "@/modules/dashboard/dashboard-cache";
 import { NotificationService } from "@/modules/notifications/services/NotificationService";
 
 import {
@@ -119,6 +120,7 @@ export class BorrowRequestService {
     const detail = await this.createBorrowRequestRecord(actor, actor.externalUserId, input);
 
     this.notifyAsync(() => this.notificationService?.notifyBorrowRequestCreated(detail));
+    revalidateBorrowDashboardCache();
 
     return detail;
   }
@@ -141,6 +143,7 @@ export class BorrowRequestService {
     });
 
     this.notifyAsync(() => this.notificationService?.notifyBorrowRequestCreated(detail));
+    revalidateBorrowDashboardCache();
 
     return detail;
   }
@@ -228,6 +231,7 @@ export class BorrowRequestService {
     });
 
     this.notifyAsync(() => this.notificationService?.notifyBorrowRequestApproved(updated));
+    revalidateBorrowDashboardCache();
 
     return updated;
   }
@@ -276,6 +280,7 @@ export class BorrowRequestService {
     });
 
     this.notifyAsync(() => this.notificationService?.notifyBorrowRequestRejected(updated));
+    revalidateBorrowDashboardCache();
 
     return updated;
   }
@@ -353,6 +358,8 @@ export class BorrowRequestService {
         await this.notificationService?.notifyBorrowRequestApprovalCancelled(updated);
       }
     });
+
+    revalidateBorrowDashboardCache();
 
     return updated;
   }

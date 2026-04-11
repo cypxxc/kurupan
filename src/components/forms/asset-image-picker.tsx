@@ -107,6 +107,8 @@ export function AssetImagePicker({
               className="overflow-hidden rounded-2xl border border-border/80 bg-muted/20"
             >
               <div className="relative aspect-square bg-muted/40">
+                {/* Preview URLs can be object URLs during upload, so keep a plain img element here. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={image.url}
                   alt={t("assetImagePicker.previewAlt", { index: index + 1 })}

@@ -5,6 +5,7 @@ import type { ManagedUserSummary } from "@/modules/auth/repositories/LocalAuthUs
 import { getCurrentActorFromServer } from "@/lib/server-auth";
 import type { PaginatedResult } from "@/lib/pagination";
 import { createUserManagementStack } from "@/modules/users/createUserManagementStack";
+import { getCachedManagedUserSummary } from "@/modules/users/user-summary-cache";
 import type { ManagedUser } from "@/types/users";
 
 const EMPTY_USER_PAGE: PaginatedResult<ManagedUser> = {
@@ -46,7 +47,7 @@ export default async function UsersPage() {
       page: 1,
       limit: 10,
     }),
-    userManagementService.getUserSummary(actor),
+    getCachedManagedUserSummary(),
   ]);
 
   return <UsersPageClient initialPage={initialPage} initialSummary={initialSummary} />;

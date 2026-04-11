@@ -5,11 +5,21 @@ import type {
   ReturnListQuery,
   ReturnUpdateInput,
 } from "@/lib/validators/returns";
+import { measureAsyncOperation } from "@/lib/performance";
 import type { ActorContext } from "@/types/auth";
+import type { ReturnFormItem, ReturnPreparationData } from "@/types/returns";
 import { AuditLogService } from "@/modules/audit/services/AuditLogService";
 import { AssetRepository } from "@/modules/assets/repositories/AssetRepository";
 import { BorrowRequestStateMachine } from "@/modules/borrow/domain/BorrowRequestStateMachine";
-import { BorrowRequestRepository } from "@/modules/borrow/repositories/BorrowRequestRepository";
+import {
+  BorrowRequestRepository,
+  type BorrowRequestDetail,
+} from "@/modules/borrow/repositories/BorrowRequestRepository";
+import { serializeBorrowRequestDetail } from "@/modules/borrow/serializers";
+import {
+  revalidateAssetDashboardCache,
+  revalidateBorrowDashboardCache,
+} from "@/modules/dashboard/dashboard-cache";
 import { logger } from "@/lib/logger";
 import { NotificationService } from "@/modules/notifications/services/NotificationService";
 
@@ -21,6 +31,12 @@ import {
   requireReturnableBorrowRequest,
   validateReturnItems,
 } from "./return-service.helpers";
+
+const RETURNABLE_REQUEST_STATUSES = [
+  "approved",
+  "partially_approved",
+  "partially_returned",
+] as const;
 
 export class ReturnService {
   constructor(
@@ -70,6 +86,51 @@ export class ReturnService {
     this.returnPolicy.assertCanView(actor, record.borrowerExternalUserId);
 
     return record;
+  }
+
+  async getReturnPreparationData(
+    actor: ActorContext,
+    borrowRequestId?: number,
+  ): Promise<ReturnPreparationData> {
+    this.returnPolicy.assertCanManageReturns(actor);
+
+    return measureAsyncOperation(
+      "service.returns.getPreparationData",
+      async () => {
+        const eligibleRequests = await this.borrowRequestRepository.findSummaries(
+          {
+            statuses: [...RETURNABLE_REQUEST_STATUSES],
+          },
+          undefined,
+        );
+
+        if (!borrowRequestId) {
+          return {
+            eligibleRequests,
+            selectedRequest: null,
+            returnItems: [],
+          };
+        }
+
+        const selectedRequest = requireReturnableBorrowRequest(
+          await this.borrowRequestRepository.findById(borrowRequestId),
+          borrowRequestId,
+        );
+        const returnItems = await this.buildReturnFormItems(selectedRequest);
+
+        return {
+          eligibleRequests,
+          selectedRequest: serializeBorrowRequestDetail(selectedRequest),
+          returnItems,
+        };
+      },
+      {
+        context: {
+          actorRole: actor.role,
+          borrowRequestId,
+        },
+      },
+    );
   }
 
   async createReturn(actor: ActorContext, input: ReturnCreateInput) {
@@ -157,6 +218,8 @@ export class ReturnService {
     });
 
     this.notifyAsync(() => this.notificationService?.notifyReturnRecorded(detail));
+    revalidateBorrowDashboardCache();
+    revalidateAssetDashboardCache();
 
     return detail;
   }
@@ -195,5 +258,35 @@ export class ReturnService {
     fn()?.catch((error) => {
       logger.error("Notification delivery failed", { error });
     });
+  }
+
+  private async buildReturnFormItems(
+    request: BorrowRequestDetail,
+  ): Promise<ReturnFormItem[]> {
+    const returnedQtyMap = await this.returnRepository.sumReturnedByBorrowRequestItemIds(
+      request.items.map((item) => item.id),
+    );
+
+    return request.items
+      .map((item) => {
+        const approvedQty = item.approvedQty ?? 0;
+        const returnedQty = returnedQtyMap.get(item.id) ?? 0;
+        const remainingQty = Math.max(0, approvedQty - returnedQty);
+
+        return {
+          borrowRequestItemId: item.id,
+          assetId: item.assetId,
+          assetCode: item.assetCode,
+          assetName: item.assetName,
+          approvedQty,
+          returnedQty,
+          remainingQty,
+          selected: remainingQty > 0,
+          returnQty: remainingQty > 0 ? remainingQty : 0,
+          condition: "good",
+          note: "",
+        } satisfies ReturnFormItem;
+      })
+      .filter((item) => item.remainingQty > 0);
   }
 }

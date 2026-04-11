@@ -1,36 +1,18 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { I18nProvider } from "@/components/providers/i18n-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getDictionary, getRequestLocale } from "@/lib/i18n/server";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
+import { themeInitScript } from "@/lib/theme-init-script";
 import { cn } from "@/lib/utils";
 
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
-const themeInitScript = `
-(() => {
-  const storageKey = "theme";
-  const mediaQuery = "(prefers-color-scheme: dark)";
-  const root = document.documentElement;
-
-  const storedTheme = window.localStorage.getItem(storageKey);
-  const preferredTheme =
-    storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
-      ? storedTheme
-      : "system";
-  const resolvedTheme =
-    preferredTheme === "system"
-      ? (window.matchMedia(mediaQuery).matches ? "dark" : "light")
-      : preferredTheme;
-
-  root.classList.toggle("dark", resolvedTheme === "dark");
-  root.style.colorScheme = resolvedTheme;
-})();
-`;
 
 export const metadata: Metadata = {
   title: "Kurupan Asset Borrowing and Return System",
@@ -64,6 +46,7 @@ export default async function RootLayout({
               {children}
               <Toaster position="top-right" />
             </AuthProvider>
+            <SpeedInsights />
           </I18nProvider>
         </ThemeProvider>
       </body>

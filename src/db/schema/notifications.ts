@@ -27,6 +27,11 @@ export const notifications = pgTable(
   },
   (table) => [
     index("notifications_recipient_idx").on(table.recipientExternalUserId),
+    index("notifications_recipient_created_at_id_idx").on(
+      table.recipientExternalUserId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
     index("notifications_recipient_unread_idx").on(table.recipientExternalUserId, table.isRead),
     uniqueIndex("notifications_recipient_type_dedupe_idx").on(
       table.recipientExternalUserId,

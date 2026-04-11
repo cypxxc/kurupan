@@ -16,6 +16,7 @@ import {
   resolvePagination,
   type PaginatedResult,
 } from "@/lib/pagination";
+import { measureAsyncOperation } from "@/lib/performance";
 import type { BorrowRequestStatus } from "@/modules/borrow/domain/BorrowRequestStateMachine";
 import { BORROW_REQUEST_STATUS_VALUES } from "@/types/borrow-requests";
 
@@ -80,91 +81,131 @@ export class BorrowRequestRepository {
 
   async findSummaries(
     filters: BorrowRequestListFilters & { statuses?: BorrowRequestStatus[] },
-    limit: number,
+    limit?: number,
   ): Promise<BorrowRequestListSummary[]> {
-    const conditions = this.buildConditions(filters);
+    return measureAsyncOperation(
+      "db.borrowRequests.findSummaries",
+      async () => {
+        const conditions = this.buildConditions(filters);
 
-    if (filters.statuses && filters.statuses.length > 0) {
-      conditions.push(inArray(borrowRequests.status, filters.statuses));
-    }
+        if (filters.statuses && filters.statuses.length > 0) {
+          conditions.push(inArray(borrowRequests.status, filters.statuses));
+        }
 
-    const query = this.db
-      .select({
-        id: borrowRequests.id,
-        requestNo: borrowRequests.requestNo,
-        borrowerExternalUserId: borrowRequests.borrowerExternalUserId,
-        borrowerName: localAuthUsers.fullName,
-        dueDate: borrowRequests.dueDate,
-        status: borrowRequests.status,
-      })
-      .from(borrowRequests)
-      .leftJoin(
-        localAuthUsers,
-        eq(borrowRequests.borrowerExternalUserId, localAuthUsers.externalUserId),
-      )
-      .orderBy(...this.listOrder)
-      .limit(limit);
+        const baseQuery = this.db
+          .select({
+            id: borrowRequests.id,
+            requestNo: borrowRequests.requestNo,
+            borrowerExternalUserId: borrowRequests.borrowerExternalUserId,
+            borrowerName: localAuthUsers.fullName,
+            dueDate: borrowRequests.dueDate,
+            status: borrowRequests.status,
+          })
+          .from(borrowRequests)
+          .leftJoin(
+            localAuthUsers,
+            eq(borrowRequests.borrowerExternalUserId, localAuthUsers.externalUserId),
+          );
 
-    const rows =
-      conditions.length > 0 ? await query.where(and(...conditions)) : await query;
+        const query =
+          typeof limit === "number"
+            ? baseQuery.orderBy(...this.listOrder).limit(limit)
+            : baseQuery.orderBy(...this.listOrder);
 
-    return rows.map((row) => ({
-      id: row.id,
-      requestNo: row.requestNo,
-      borrowerName: row.borrowerName ?? row.borrowerExternalUserId,
-      dueDate: row.dueDate,
-      status: row.status,
-    }));
+        const rows =
+          conditions.length > 0 ? await query.where(and(...conditions)) : await query;
+
+        return rows.map((row) => ({
+          id: row.id,
+          requestNo: row.requestNo,
+          borrowerName: row.borrowerName ?? row.borrowerExternalUserId,
+          dueDate: row.dueDate,
+          status: row.status,
+        }));
+      },
+      {
+        context: {
+          limit,
+          status: filters.status,
+          borrowerExternalUserId: filters.borrowerExternalUserId,
+          statuses: filters.statuses,
+        },
+      },
+    );
   }
 
   async getStatusCounts(
     filters: BorrowRequestListFilters,
   ): Promise<Record<BorrowRequestStatus, number>> {
-    const conditions = this.buildConditions(filters);
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const rows = await this.db
-      .select({
-        status: borrowRequests.status,
-        total: count(),
-      })
-      .from(borrowRequests)
-      .where(whereClause)
-      .groupBy(borrowRequests.status);
+    return measureAsyncOperation(
+      "db.borrowRequests.getStatusCounts",
+      async () => {
+        const conditions = this.buildConditions(filters);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        const rows = await this.db
+          .select({
+            status: borrowRequests.status,
+            total: count(),
+          })
+          .from(borrowRequests)
+          .where(whereClause)
+          .groupBy(borrowRequests.status);
 
-    const counts = Object.fromEntries(
-      BORROW_REQUEST_STATUS_VALUES.map((status) => [status, 0]),
-    ) as Record<BorrowRequestStatus, number>;
+        const counts = Object.fromEntries(
+          BORROW_REQUEST_STATUS_VALUES.map((status) => [status, 0]),
+        ) as Record<BorrowRequestStatus, number>;
 
-    for (const row of rows) {
-      counts[row.status] = Number(row.total);
-    }
+        for (const row of rows) {
+          counts[row.status] = Number(row.total);
+        }
 
-    return counts;
+        return counts;
+      },
+      {
+        context: {
+          status: filters.status,
+          borrowerExternalUserId: filters.borrowerExternalUserId,
+        },
+      },
+    );
   }
 
   async findPage(
     filters: BorrowRequestListFilters,
     defaultLimit = 10,
   ): Promise<PaginatedResult<BorrowRequestDetail>> {
-    const conditions = this.buildConditions(filters);
-    const pagination = resolvePagination(filters, defaultLimit);
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    return measureAsyncOperation(
+      "db.borrowRequests.findPage",
+      async () => {
+        const conditions = this.buildConditions(filters);
+        const pagination = resolvePagination(filters, defaultLimit);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countRow] = await this.db
-      .select({ total: count() })
-      .from(borrowRequests)
-      .where(whereClause);
+        const [countRow] = await this.db
+          .select({ total: count() })
+          .from(borrowRequests)
+          .where(whereClause);
 
-    const query = this.db
-      .select()
-      .from(borrowRequests)
-      .orderBy(...this.listOrder)
-      .limit(pagination.limit)
-      .offset(pagination.offset);
-    const requests = whereClause ? await query.where(whereClause) : await query;
-    const items = await this.attachRelations(requests);
+        const query = this.db
+          .select()
+          .from(borrowRequests)
+          .orderBy(...this.listOrder)
+          .limit(pagination.limit)
+          .offset(pagination.offset);
+        const requests = whereClause ? await query.where(whereClause) : await query;
+        const items = await this.attachRelations(requests);
 
-    return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
+        return buildPaginatedResult(items, countRow?.total ?? 0, pagination);
+      },
+      {
+        context: {
+          page: filters.page,
+          limit: filters.limit,
+          status: filters.status,
+          borrowerExternalUserId: filters.borrowerExternalUserId,
+        },
+      },
+    );
   }
 
   async findById(id: number): Promise<BorrowRequestDetail | null> {

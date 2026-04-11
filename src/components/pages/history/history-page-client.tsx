@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useI18n } from "@/components/providers/i18n-provider";
@@ -25,7 +25,23 @@ import type { AuditLogEntry, HistoryEntityType, HistoryEvent } from "@/types/his
 const HISTORY_PAGE_SIZE = 20;
 const AUDIT_LOG_PAGE_SIZE = 20;
 
-export function HistoryPageClient() {
+type HistoryPageClientProps = {
+  initialHistoryPage: PaginatedResult<HistoryEvent>;
+};
+
+function createEmptyAuditPagination(page = 1): PaginatedResult<AuditLogEntry> {
+  return {
+    items: [],
+    page,
+    limit: AUDIT_LOG_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  };
+}
+
+export function HistoryPageClient({ initialHistoryPage }: HistoryPageClientProps) {
   const { t } = useI18n();
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>("history");
@@ -33,30 +49,18 @@ export function HistoryPageClient() {
   const [action, setAction] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [historyItems, setHistoryItems] = useState<HistoryEvent[]>([]);
+  const [historyItems, setHistoryItems] = useState<HistoryEvent[]>(initialHistoryPage.items);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(initialHistoryPage.page);
   const [auditPage, setAuditPage] = useState(1);
-  const [historyPagination, setHistoryPagination] = useState<PaginatedResult<HistoryEvent>>({
-    items: [],
-    page: 1,
-    limit: HISTORY_PAGE_SIZE,
-    total: 0,
-    totalPages: 1,
-    hasPreviousPage: false,
-    hasNextPage: false,
-  });
-  const [auditPagination, setAuditPagination] = useState<PaginatedResult<AuditLogEntry>>({
-    items: [],
-    page: 1,
-    limit: AUDIT_LOG_PAGE_SIZE,
-    total: 0,
-    totalPages: 1,
-    hasPreviousPage: false,
-    hasNextPage: false,
-  });
-  const [loadingHistory, setLoadingHistory] = useState(true);
-  const [loadingAudit, setLoadingAudit] = useState(true);
+  const [historyPagination, setHistoryPagination] =
+    useState<PaginatedResult<HistoryEvent>>(initialHistoryPage);
+  const [auditPagination, setAuditPagination] =
+    useState<PaginatedResult<AuditLogEntry>>(createEmptyAuditPagination());
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const hasFetchedHistoryRef = useRef(false);
+  const hasFetchedAuditRef = useRef(false);
 
   const canManageAudit = user?.role === "staff" || user?.role === "admin";
 
@@ -99,6 +103,7 @@ export function HistoryPageClient() {
         query: historyQuery,
       });
 
+      hasFetchedHistoryRef.current = true;
       setHistoryItems(data.items);
       setHistoryPagination(data);
     } catch (error) {
@@ -122,6 +127,7 @@ export function HistoryPageClient() {
     if (!canManageAudit) {
       setLoadingAudit(false);
       setAuditLogs([]);
+      setAuditPagination(createEmptyAuditPagination(auditPage));
       return;
     }
 
@@ -136,29 +142,34 @@ export function HistoryPageClient() {
         query: auditQuery,
       });
 
+      hasFetchedAuditRef.current = true;
       setAuditLogs(data.items);
       setAuditPagination(data);
     } catch (error) {
       toast.error(getApiErrorMessage(error, t("history.loadAuditError")));
       setAuditLogs([]);
-      setAuditPagination({
-        items: [],
-        page: auditPage,
-        limit: AUDIT_LOG_PAGE_SIZE,
-        total: 0,
-        totalPages: 1,
-        hasPreviousPage: false,
-        hasNextPage: false,
-      });
+      setAuditPagination(createEmptyAuditPagination(auditPage));
     } finally {
       setLoadingAudit(false);
     }
   }, [auditPage, canManageAudit, queryString, t]);
 
   useEffect(() => {
+    if (!hasFetchedHistoryRef.current) {
+      hasFetchedHistoryRef.current = true;
+      return;
+    }
+
     void fetchHistory();
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    if (!canManageAudit || viewMode !== "audit") {
+      return;
+    }
+
     void fetchAuditLogs();
-  }, [fetchAuditLogs, fetchHistory]);
+  }, [canManageAudit, fetchAuditLogs, viewMode]);
 
   const entityOptions = useMemo(
     () =>

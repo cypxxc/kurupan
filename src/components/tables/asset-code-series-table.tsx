@@ -155,6 +155,7 @@ export function AssetCodeSeriesTable({
         </p>
         <Link
           href="/assets/series/new"
+          prefetch={false}
           className={cn(buttonVariants({ variant: "default" }), "mt-5")}
         >
           {t("assetCodeSeries.table.emptyAction")}
@@ -245,6 +246,7 @@ export function AssetCodeSeriesTable({
                     <div className="flex justify-end gap-2">
                       <Link
                         href={`/assets/series/${item.id}/edit`}
+                        prefetch={false}
                         className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}
                       >
                         <PencilLine className="size-3.5" />

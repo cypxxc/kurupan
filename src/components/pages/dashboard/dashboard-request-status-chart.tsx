@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 
 import type { DashboardRequestStatusCounts } from "@/components/pages/dashboard/dashboard-types";
 import { BORROW_REQUEST_STATUS_VALUES, type BorrowRequestStatus } from "@/types/borrow-requests";
+import { cn } from "@/lib/utils";
 
 type DashboardRequestStatusChartProps = {
   counts: DashboardRequestStatusCounts;
@@ -11,39 +12,79 @@ type DashboardRequestStatusChartProps = {
 
 type StatusChartConfig = {
   label: string;
-  color: CSSProperties["color"];
+  accentClassName: string;
 };
 
 const STATUS_CHART_CONFIG: Record<BorrowRequestStatus, StatusChartConfig> = {
   pending: {
     label: "Pending",
-    color: "var(--color-chart-1)",
+    accentClassName: "dashboard-accent-pending",
   },
   approved: {
     label: "Approved",
-    color: "var(--color-chart-3)",
+    accentClassName: "dashboard-accent-approved",
   },
   partially_approved: {
     label: "Partially approved",
-    color: "var(--color-chart-5)",
+    accentClassName: "dashboard-accent-partially-approved",
   },
   rejected: {
     label: "Rejected",
-    color: "var(--destructive)",
+    accentClassName: "dashboard-accent-rejected",
   },
   cancelled: {
     label: "Cancelled",
-    color: "var(--muted-foreground)",
+    accentClassName: "dashboard-accent-cancelled",
   },
   partially_returned: {
     label: "Partially returned",
-    color: "var(--color-chart-4)",
+    accentClassName: "dashboard-accent-partially-returned",
   },
   returned: {
     label: "Returned",
-    color: "var(--color-chart-2)",
+    accentClassName: "dashboard-accent-returned",
   },
 };
+
+const COLUMN_DELAY_CLASSES = [
+  "dashboard-delay-120",
+  "dashboard-delay-210",
+  "dashboard-delay-300",
+  "dashboard-delay-390",
+  "dashboard-delay-480",
+  "dashboard-delay-570",
+  "dashboard-delay-660",
+] as const;
+
+const BAR_DELAY_CLASSES = [
+  "dashboard-delay-220",
+  "dashboard-delay-310",
+  "dashboard-delay-400",
+  "dashboard-delay-490",
+  "dashboard-delay-580",
+  "dashboard-delay-670",
+  "dashboard-delay-760",
+] as const;
+
+const SUMMARY_DELAY_CLASSES = [
+  "dashboard-delay-280",
+  "dashboard-delay-350",
+  "dashboard-delay-420",
+  "dashboard-delay-490",
+  "dashboard-delay-560",
+  "dashboard-delay-630",
+  "dashboard-delay-700",
+] as const;
+
+const PROGRESS_DELAY_CLASSES = [
+  "dashboard-delay-360",
+  "dashboard-delay-430",
+  "dashboard-delay-500",
+  "dashboard-delay-570",
+  "dashboard-delay-640",
+  "dashboard-delay-710",
+  "dashboard-delay-780",
+] as const;
 
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
@@ -75,7 +116,7 @@ export function DashboardRequestStatusChart({
   const chartItems = BORROW_REQUEST_STATUS_VALUES.map((status) => ({
     status,
     label: STATUS_CHART_CONFIG[status].label,
-    color: STATUS_CHART_CONFIG[status].color,
+    accentClassName: STATUS_CHART_CONFIG[status].accentClassName,
     count: counts[status],
   }));
 
@@ -161,30 +202,42 @@ export function DashboardRequestStatusChart({
             </div>
             <div className="flex h-72 items-end gap-3 sm:gap-4">
               {chartItems.map((item, index) => {
-                const barHeight = `${Math.max((item.count / maxValue) * 100, item.count > 0 ? 12 : 0)}%`;
+                const barHeight = Math.max((item.count / maxValue) * 100, item.count > 0 ? 12 : 0);
                 const share = totalRequests > 0 ? (item.count / totalRequests) * 100 : 0;
 
                 return (
                   <div
                     key={item.status}
-                    className="flex min-w-0 flex-1 flex-col items-center gap-3 dashboard-chart-column"
-                    style={{ animationDelay: `${120 + index * 90}ms` }}
+                    className={cn(
+                      "flex min-w-0 flex-1 flex-col items-center gap-3 dashboard-chart-column",
+                      COLUMN_DELAY_CLASSES[index],
+                    )}
                     data-chart-ready={isChartReady}
                   >
                     <div className="text-xs font-medium text-muted-foreground">
                       {item.count}
                     </div>
                     <div className="flex h-56 w-full items-end justify-center rounded-sm bg-background/70 px-2 py-2">
-                      <div
-                        className="dashboard-chart-bar w-full max-w-12 rounded-t-sm"
-                        style={{
-                          height: barHeight,
-                          backgroundColor: item.color,
-                          animationDelay: `${220 + index * 90}ms`,
-                        }}
-                        data-chart-ready={isChartReady}
+                      <svg
+                        viewBox="0 0 48 224"
+                        className="h-full w-full max-w-12 overflow-visible"
                         aria-hidden="true"
-                      />
+                        preserveAspectRatio="none"
+                      >
+                        <rect
+                          x="0"
+                          y={224 - (barHeight * 224) / 100}
+                          width="48"
+                          height={(barHeight * 224) / 100}
+                          rx="4"
+                          className={cn(
+                            "dashboard-chart-bar",
+                            item.accentClassName,
+                            BAR_DELAY_CLASSES[index],
+                          )}
+                          data-chart-ready={isChartReady}
+                        />
+                      </svg>
                     </div>
                     <div className="text-center text-xs leading-5 text-muted-foreground">
                       <p className="font-medium text-foreground">{item.label}</p>
@@ -203,32 +256,40 @@ export function DashboardRequestStatusChart({
               return (
                 <div
                   key={`${item.status}-summary`}
-                  className="dashboard-chart-summary rounded-sm border border-border/80 bg-background/60 px-4 py-3"
-                  style={{ animationDelay: `${280 + index * 70}ms` }}
+                  className={cn(
+                    "dashboard-chart-summary rounded-sm border border-border/80 bg-background/60 px-4 py-3",
+                    SUMMARY_DELAY_CLASSES[index],
+                  )}
                   data-chart-ready={isChartReady}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: item.color }}
-                        aria-hidden="true"
-                      />
+                      <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", item.accentClassName)} aria-hidden="true" />
                       <p className="truncate text-sm font-medium">{item.label}</p>
                     </div>
                     <p className="text-sm text-muted-foreground">{item.count}</p>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="dashboard-chart-progress h-full rounded-full"
-                      style={{
-                        width: `${share}%`,
-                        backgroundColor: item.color,
-                        animationDelay: `${360 + index * 70}ms`,
-                      }}
-                      data-chart-ready={isChartReady}
+                    <svg
+                      viewBox="0 0 100 8"
+                      className="h-full w-full"
                       aria-hidden="true"
-                    />
+                      preserveAspectRatio="none"
+                    >
+                      <rect
+                        x="0"
+                        y="0"
+                        width={share}
+                        height="8"
+                        rx="4"
+                        className={cn(
+                          "dashboard-chart-progress",
+                          item.accentClassName,
+                          PROGRESS_DELAY_CLASSES[index],
+                        )}
+                        data-chart-ready={isChartReady}
+                      />
+                    </svg>
                   </div>
                 </div>
               );

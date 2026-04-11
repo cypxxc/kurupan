@@ -7,6 +7,7 @@ import {
   resolvePagination,
   type PaginatedResult,
 } from "@/lib/pagination";
+import { measureAsyncOperation } from "@/lib/performance";
 import type { AuditLogListQuery } from "@/lib/validators/history";
 
 export type CreateAuditLogInput = {
@@ -72,28 +73,46 @@ export class AuditLogRepository {
     actorExternalUserId?: string,
     includeData = false,
   ): Promise<PaginatedResult<AuditLogRecord>> {
-    const conditions = this.buildConditions(filters, actorExternalUserId);
-    const pagination = resolvePagination(filters, defaultLimit);
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    return measureAsyncOperation(
+      "db.auditLogs.findPage",
+      async () => {
+        const conditions = this.buildConditions(filters, actorExternalUserId);
+        const pagination = resolvePagination(filters, defaultLimit);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countRow] = await this.db
-      .select({ total: count() })
-      .from(auditLogs)
-      .where(whereClause);
-    const rows = await this.selectRecords(
-      conditions,
-      pagination.limit,
-      pagination.offset,
-      includeData,
-    );
+        const [countRow] = await this.db
+          .select({ total: count() })
+          .from(auditLogs)
+          .where(whereClause);
+        const rows = await this.selectRecords(
+          conditions,
+          pagination.limit,
+          pagination.offset,
+          includeData,
+        );
 
-    return buildPaginatedResult(
-      rows.map((row) => ({
-        ...row,
-        actorName: row.actorName ?? null,
-      })),
-      countRow?.total ?? 0,
-      pagination,
+        return buildPaginatedResult(
+          rows.map((row) => ({
+            ...row,
+            actorName: row.actorName ?? null,
+          })),
+          countRow?.total ?? 0,
+          pagination,
+        );
+      },
+      {
+        context: {
+          page: filters.page,
+          limit: filters.limit,
+          entityType: filters.entityType,
+          entityId: filters.entityId,
+          action: filters.action,
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          actorExternalUserId,
+          includeData,
+        },
+      },
     );
   }
 

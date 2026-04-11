@@ -26,7 +26,9 @@ export default function EditAssetPage() {
       setLoading(true);
 
       try {
-        const data = await apiClient.get<AssetDetail>(`/api/assets/${id}`);
+        const data = await apiClient.get<AssetDetail>(`/api/assets/${id}`, {
+          query: { includeActivity: false },
+        });
         setAsset(data);
       } catch (error) {
         toast.error(getApiErrorMessage(error, "Unable to load asset details."));

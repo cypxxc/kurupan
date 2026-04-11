@@ -120,6 +120,7 @@ export function AssetDataTable({
         {canManage && !searching ? (
           <Link
             href="/assets/new"
+            prefetch={false}
             className={cn(buttonVariants({ variant: "default" }), "mt-5")}
           >
             {t("assets.table.empty.addAsset")}
@@ -166,6 +167,8 @@ export function AssetDataTable({
                     <div className="flex min-w-56 items-center gap-3">
                       {asset.primaryImageUrl ? (
                         <div className="size-11 shrink-0 overflow-hidden rounded-sm border border-border/80 bg-muted/30">
+                          {/* Asset images may resolve from local uploads or external blob URLs at runtime. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={asset.primaryImageUrl}
                             alt={asset.name}
@@ -180,6 +183,7 @@ export function AssetDataTable({
                       <div className="min-w-0">
                         <Link
                           href={`/assets/${asset.id}`}
+                          prefetch={false}
                           title={asset.name}
                           className="asset-title-clamp block max-w-[18rem] text-sm leading-5 font-medium transition-colors hover:text-primary sm:max-w-[24rem] xl:max-w-[32rem]"
                         >
@@ -244,6 +248,7 @@ export function AssetDataTable({
                     <div className="flex justify-end gap-2">
                       <Link
                         href={`/assets/${asset.id}`}
+                        prefetch={false}
                         className={buttonVariants({ variant: "ghost", size: "sm" })}
                       >
                         {t("common.actions.view")}
@@ -251,6 +256,7 @@ export function AssetDataTable({
                       {canManage ? (
                         <Link
                           href={`/assets/${asset.id}/edit`}
+                          prefetch={false}
                           className={buttonVariants({ variant: "outline", size: "sm" })}
                         >
                           {t("common.actions.edit")}
@@ -259,6 +265,7 @@ export function AssetDataTable({
                       {borrowable ? (
                         <Link
                           href={`/borrow-requests/new?assetId=${asset.id}`}
+                          prefetch={false}
                           className={buttonVariants({ variant: "outline", size: "sm" })}
                         >
                           {t("common.actions.borrow")}

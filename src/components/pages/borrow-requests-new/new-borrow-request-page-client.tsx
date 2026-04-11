@@ -136,6 +136,9 @@ export function NewBorrowRequestPageClient() {
       try {
         const data = await apiClient.get<BorrowableAsset & { availableQty: number }>(
           `/api/assets/${selectedAssetId}`,
+          {
+            query: { includeActivity: false },
+          },
         );
 
         if (!active || data.availableQty <= 0) {

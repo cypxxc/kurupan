@@ -1,3 +1,5 @@
+import type { BorrowRequestDetail, BorrowRequestStatus } from "@/types/borrow-requests";
+
 export type ReturnCondition = "good" | "damaged" | "lost";
 
 export type ReturnTransactionItem = {
@@ -36,6 +38,20 @@ export type ReturnFormItem = {
   returnQty: number;
   condition: ReturnCondition;
   note: string;
+};
+
+export type ReturnEligibleRequestOption = {
+  id: number;
+  requestNo: string;
+  borrowerName: string;
+  dueDate: string;
+  status: BorrowRequestStatus;
+};
+
+export type ReturnPreparationData = {
+  eligibleRequests: ReturnEligibleRequestOption[];
+  selectedRequest: BorrowRequestDetail | null;
+  returnItems: ReturnFormItem[];
 };
 
 export function toDateTimeLocalValue(date = new Date()) {

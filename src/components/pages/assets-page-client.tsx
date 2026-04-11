@@ -34,8 +34,10 @@ function withSelectedOption(options: string[], selected: string) {
 
 export function AssetsPageClient({
   initialPage,
+  initialFieldOptions,
 }: {
   initialPage: PaginatedResult<Asset>;
+  initialFieldOptions: AssetFieldOptions;
 }) {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -49,9 +51,9 @@ export function AssetsPageClient({
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [page, setPage] = useState(initialPage.page);
-  const [fieldOptions, setFieldOptions] = useState<AssetFieldOptions>({
-    categories: [],
-    locations: [],
+  const [fieldOptions] = useState<AssetFieldOptions>({
+    categories: initialFieldOptions.categories,
+    locations: initialFieldOptions.locations,
   });
   const skipInitialFetch = useRef(true);
   const filterKeyRef = useRef("");
@@ -120,17 +122,6 @@ export function AssetsPageClient({
       setLoading(false);
     }
   }, [categoryFilter, debouncedSearch, locationFilter, page, statusFilter, stockFilter]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiClient.get<AssetFieldOptions>("/api/assets/field-options");
-        setFieldOptions(data);
-      } catch {
-        // Keep the page usable if field options fail to load.
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     const filtersChanged = filterKeyRef.current !== filterKey;
@@ -217,12 +208,14 @@ export function AssetsPageClient({
           <div className="flex flex-wrap gap-2">
             <Link
               href="/assets/series"
+              prefetch={false}
               className={cn(buttonVariants({ variant: "outline" }), "gap-2")}
             >
               {t("assets.page.manageSeries")}
             </Link>
             <Link
               href="/assets/new"
+              prefetch={false}
               className={cn(
                 buttonVariants({ variant: "default" }),
                 "gap-2 dark:text-black dark:[&_svg]:text-black",

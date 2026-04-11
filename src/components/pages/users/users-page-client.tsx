@@ -264,6 +264,7 @@ export function UsersPageClient({
         <CardContent>
           <Link
             href="/dashboard"
+            prefetch={false}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             Back to dashboard

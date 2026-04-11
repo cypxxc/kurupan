@@ -1,4 +1,12 @@
+import { createHash } from "node:crypto";
 import type { NextConfig } from "next";
+
+import { isProductionEnvironment } from "./src/lib/env/safety";
+import { themeInitScript } from "./src/lib/theme-init-script";
+
+const themeInitScriptHash = createHash("sha256")
+  .update(themeInitScript)
+  .digest("base64");
 
 const securityHeaders = [
   {
@@ -8,10 +16,11 @@ const securityHeaders = [
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
+      "font-src 'self'",
       "img-src 'self' data: blob:",
       "object-src 'none'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'sha256-${themeInitScriptHash}'`,
+      "style-src 'self'",
       "connect-src 'self'",
       "upgrade-insecure-requests",
     ].join("; "),
@@ -40,7 +49,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   async headers() {
-    if (process.env.APP_ENV !== "production") {
+    if (!isProductionEnvironment()) {
       return [];
     }
 
