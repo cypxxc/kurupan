@@ -40,11 +40,13 @@ export function validateSessionConfig(env: SessionEnv = process.env as SessionEn
   }
 }
 
-function getSessionSecret() {
-  validateSessionConfig();
-  const sessionSecret = process.env.SESSION_SECRET;
+let _encodedSecret: Uint8Array | undefined;
 
-  return new TextEncoder().encode(sessionSecret);
+function getSessionSecret() {
+  if (_encodedSecret) return _encodedSecret;
+  validateSessionConfig();
+  _encodedSecret = new TextEncoder().encode(process.env.SESSION_SECRET);
+  return _encodedSecret;
 }
 
 function getSessionTtlHours() {
